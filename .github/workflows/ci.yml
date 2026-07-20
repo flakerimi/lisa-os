@@ -68,8 +68,11 @@ jobs:
         run: |
           podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
             docker.io/library/archlinux:latest /usr/lib/systemd/systemd
-          sleep 5
-          podman exec lisa-e2e systemctl is-system-running --wait || true
+          # Bounded wait for PID1 to answer; --wait can hang forever if a
+          # unit never settles in the container.
+          timeout 60 podman exec lisa-e2e bash -c \
+            'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 1; done' \
+            || echo "systemd state: $(podman exec lisa-e2e systemctl is-system-running || true) — proceeding"
       - name: Run layer e2e
         run: podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
       - name: Cleanup
