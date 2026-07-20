@@ -27,3 +27,51 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --locked
+
+  # PLAN §5.1 acceptance forerunner: unmodified OpenAI Python client
+  # against the OpenAI-compat endpoint.
+  openai-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p lisa-inferenced
+      - name: Start daemon
+        run: |
+          ./target/debug/lisa-inferenced &
+          for _ in $(seq 1 50); do
+            curl -sf 127.0.0.1:7777/health >/dev/null && break
+            sleep 0.2
+          done
+      - run: pip install openai
+      - run: python tests/e2e/openai_client_test.py
+
+  # PLAN §5.10: egress control is verified, not promised — the daemon
+  # serves loopback under its unit sandbox while outbound is blocked.
+  egress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked -p lisa-inferenced
+      - run: bash tests/e2e/egress-test.sh target/debug/lisa-inferenced
+
+  # PLAN §10 M0 acceptance: the Track L layer installs and uninstalls
+  # cleanly on vanilla Arch (systemd container; Omarchy VM lands later).
+  layer-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start Arch container with systemd
+        run: |
+          podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
+            docker.io/library/archlinux:latest /usr/lib/systemd/systemd
+          sleep 5
+          podman exec lisa-e2e systemctl is-system-running --wait || true
+      - name: Run layer e2e
+        run: podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
+      - name: Cleanup
+        if: always()
+        run: podman rm -f lisa-e2e

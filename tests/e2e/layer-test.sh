@@ -13,6 +13,9 @@ set -euo pipefail
 say() { printf '\n== %s\n' "$*"; }
 
 say "provision build deps"
+# pacman >= 7's Landlock/alpm-user download sandbox cannot apply inside a
+# rootless container; disabling it is container-only (real hosts keep it).
+grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
 pacman -Syu --noconfirm --needed base-devel rust git curl
 
 say "clean checkout of HEAD (tests exactly what is committed)"
