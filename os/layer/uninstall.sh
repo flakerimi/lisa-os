@@ -1,18 +1,50 @@
 #!/usr/bin/env bash
-# Lisa Layer uninstaller (Track L, ADR-0003). M0 STUB — mirrors
-# install.sh: shows the plan, changes nothing yet. The real uninstaller
-# must leave a vanilla system: packages removed, repo stanza removed,
-# services disabled, user data (models, context) removed only after an
-# explicit per-item prompt.
+# Lisa Layer uninstaller (Track L). Reverses every install.sh step and
+# leaves a vanilla system. Interactive by default; LISA_ASSUME_YES=1
+# skips prompts for CI. User data (/var/lib/lisa: models, state) is
+# NEVER removed by this script — it prints where it lives and how to
+# remove it deliberately.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
+die() { say "error: $*" >&2; exit 1; }
 
-say "Lisa Layer uninstaller (M0 stub — dry run only)"
+confirm() {
+    [ "${LISA_ASSUME_YES:-0}" = "1" ] && return 0
+    printf '%s [y/N] ' "$1"
+    read -r answer
+    case "$answer" in y|Y|yes) return 0 ;; *) return 1 ;; esac
+}
+
+[ -f /etc/arch-release ] || die "the Lisa Layer targets Arch Linux."
+[ "$(id -u)" -eq 0 ] || die "run as root: sudo $0"
+
+if [ -d /run/systemd/system ] && systemctl list-unit-files lisa-inferenced.service >/dev/null 2>&1; then
+    if confirm "Stop and disable lisa-inferenced.service?"; then
+        systemctl disable --now lisa-inferenced.service 2>/dev/null || true
+    fi
+fi
+
+installed=$(pacman -Qq lisa-inferenced lisa-modeld lisa-cli 2>/dev/null || true)
+if [ -n "$installed" ]; then
+    if confirm "Remove packages: $(echo "$installed" | tr '\n' ' ')?"; then
+        # shellcheck disable=SC2086
+        pacman -Rns --noconfirm $installed
+    fi
+else
+    say ">> no lisa packages installed"
+fi
+
+if grep -q '^# BEGIN lisa layer' /etc/pacman.conf; then
+    if confirm "Remove the [lisa] repo stanza from /etc/pacman.conf?"; then
+        sed -i '/^# BEGIN lisa layer/,/^# END lisa layer/d' /etc/pacman.conf
+        # Trim a trailing blank line left by removal, if any.
+        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/pacman.conf
+    fi
+fi
+
 say ""
-say "When real, this script will (each step confirmed):"
-say "  1. Disable and remove lisa user services"
-say "  2. Remove lisa packages and the [lisa] pacman repo stanza"
-say "  3. Ask — separately — before touching model store or context data"
-say ""
-say "Nothing was changed."
+say "Lisa Layer removed."
+if [ -d /var/lib/lisa ]; then
+    say "Kept (yours, remove deliberately if wanted): /var/lib/lisa"
+fi

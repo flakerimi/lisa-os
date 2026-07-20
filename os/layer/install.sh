@@ -1,26 +1,53 @@
 #!/usr/bin/env bash
-# Lisa Layer installer (Track L, ADR-0003): the §5 stack on stock Arch or
-# Omarchy — no custom image required.
+# Lisa Layer installer (Track L, ADR-0003): the Lisa stack on stock Arch
+# or Omarchy — no custom image required. Root required (pacman).
 #
-# M0 STUB: validates the host and shows the plan; it installs nothing yet.
-# It becomes real when os/packages produces the first signed pacman repo
-# (M0→M1 backlog, PLAN Appendix D). The uninstaller mirrors every step.
+# Repo source: set LISA_REPO_URL (e.g. file:///path/to/repo built by
+# os/repo-tools/build-packages.sh). The hosted, signed repo lands in M1;
+# until then SigLevel is Optional for explicitly local repos.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
+die() { say "error: $*" >&2; exit 1; }
 
-if [ ! -f /etc/arch-release ]; then
-    say "error: the Lisa Layer targets Arch Linux (including Omarchy)." >&2
-    exit 1
+[ -f /etc/arch-release ] || die "the Lisa Layer targets Arch Linux (including Omarchy)."
+[ "$(id -u)" -eq 0 ] || die "run as root (pacman needs it): sudo $0"
+[ -n "${LISA_REPO_URL:-}" ] || die "LISA_REPO_URL is not set.
+The hosted repo is not live yet (M1). Build locally instead:
+  os/repo-tools/build-packages.sh /srv/lisa-repo
+  sudo LISA_REPO_URL=file:///srv/lisa-repo $0"
+
+if grep -q '^\[lisa\]' /etc/pacman.conf; then
+    say ">> [lisa] repo already configured, leaving pacman.conf untouched"
+else
+    say ">> adding [lisa] repo to /etc/pacman.conf"
+    cat >>/etc/pacman.conf <<EOF
+
+# BEGIN lisa layer (added by os/layer/install.sh; removed by uninstall.sh)
+[lisa]
+SigLevel = Optional TrustAll
+Server = $LISA_REPO_URL
+# END lisa layer
+EOF
 fi
 
-say "Lisa Layer installer (M0 stub — dry run only)"
+say ">> installing lisa-inferenced lisa-modeld lisa-cli (full -Syu: partial upgrades break Arch)"
+pacman -Syu --noconfirm lisa-inferenced lisa-modeld lisa-cli
+
+if [ -d /run/systemd/system ]; then
+    say ">> enabling lisa-inferenced.service"
+    systemctl daemon-reload
+    systemctl enable --now lisa-inferenced.service
+    say ">> waiting for the inference endpoint"
+    for _ in $(seq 1 50); do
+        curl -sf 127.0.0.1:7777/health >/dev/null 2>&1 && break
+        sleep 0.2
+    done
+    curl -sf 127.0.0.1:7777/health >/dev/null || die "lisa-inferenced did not come up; see: journalctl -u lisa-inferenced"
+else
+    say ">> no running systemd detected; skipping service enablement"
+fi
+
 say ""
-say "When the package repo ships, this script will:"
-say "  1. Add the [lisa] pacman repo (signed) to /etc/pacman.conf"
-say "  2. Install: lisa-inferenced lisa-modeld lisa-cli (M1 set)"
-say "  3. Enable user services: lisa-inferenced.service (no-network sandbox)"
-say "  4. Configure Snapper pre-update snapshots ('/' only, quotas off)"
-say "     with Limine boot-menu restore — see os/layer/snapper/"
-say ""
-say "Nothing was changed. Track progress: docs/PLAN.md §10 (M0/M1)."
+say "Lisa Layer installed. Try:  lisa ask \"write a haiku about entropy\""
+say "Uninstall cleanly with:     os/layer/uninstall.sh"
