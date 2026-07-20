@@ -11,12 +11,30 @@ on:
   workflow_dispatch:
 
 jobs:
-  mkosi-validate:
+  image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # mkosi is not on PyPI; its repo ships the official setup action.
+      # mkosi is not on PyPI; its repo ships the official setup action
+      # (also grants unprivileged /dev/kvm access for the boot check).
       - name: Install mkosi
         uses: systemd/mkosi@v26
       - name: Validate image profile
         run: mkosi --directory os/mkosi summary
+      - name: Build image
+        run: mkosi --directory os/mkosi build
+      # M0 acceptance forerunner: the image must boot. Direct-kernel boot
+      # to poweroff.target proves kernel + initrd + root mount + systemd;
+      # a hang is caught by the timeout.
+      - name: Boot check (QEMU)
+        run: |
+          timeout 600 mkosi --directory os/mkosi \
+            --kernel-command-line-extra="systemd.unit=poweroff.target" \
+            qemu
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lisa-image
+          path: os/mkosi/lisa.raw
+          if-no-files-found: warn
+          retention-days: 7

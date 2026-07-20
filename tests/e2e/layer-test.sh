@@ -18,7 +18,32 @@ say "provision build deps"
 grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
 pacman -Syu --noconfirm --needed base-devel rust git curl
 
+say "container-only sandbox relaxation for the service"
+# Rootless containers cannot create mount namespaces or attach cgroup BPF
+# firewalls, so the unit's filesystem sandbox cannot apply here. This
+# drop-in relaxes ONLY those directives, ONLY in containers; the full
+# sandbox (including egress denial) is verified on a real systemd host by
+# tests/e2e/egress-test.sh in CI.
+if systemd-detect-virt --container --quiet; then
+    mkdir -p /etc/systemd/system/lisa-inferenced.service.d
+    cat >/etc/systemd/system/lisa-inferenced.service.d/container-e2e.conf <<'EOF'
+[Service]
+# DynamicUser implies ProtectSystem/PrivateTmp, which need mount namespaces.
+DynamicUser=no
+ProtectSystem=no
+ProtectHome=no
+PrivateTmp=no
+PrivateDevices=no
+ProtectProc=default
+ProtectControlGroups=no
+ProtectKernelTunables=no
+ProtectKernelModules=no
+ProtectKernelLogs=no
+EOF
+fi
+
 say "clean checkout of HEAD (tests exactly what is committed)"
+rm -rf /build
 git clone --quiet /src /build
 useradd -m builder 2>/dev/null || true
 chown -R builder /build
