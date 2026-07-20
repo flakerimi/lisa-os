@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = [
+    "libs/liblisa",
+    "daemons/inferenced",
+    "daemons/modeld",
+    "cli/lisa",
+]
+
+[workspace.package]
+edition = "2024"
+license = "TBD"
+repository = "https://github.com/flakerimi/lisa-os"
+
+[workspace.dependencies]
+liblisa = { path = "libs/liblisa" }
+lisa-modeld = { path = "daemons/modeld" }

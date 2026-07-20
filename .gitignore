@@ -1,0 +1,13 @@
+# Rust
+/target/
+
+# macOS
+.DS_Store
+
+# mkosi build outputs (Track I images are CI artifacts, never committed)
+os/mkosi/mkosi.output/
+os/mkosi/*.cache/
+os/mkosi/mkosi.builddir/
+
+# Local model stores / scratch
+*.gguf

@@ -1,0 +1,83 @@
+//! lisa-inferenced entrypoint — the one process that owns compute for
+//! inference (`docs/PLAN.md` §5.1). M0 walking skeleton: OpenAI-compat HTTP
+//! on loopback with the stub engine, llama-server supervision scaffold, and
+//! an optional D-Bus liveness surface.
+
+use clap::Parser;
+use lisa_inferenced::config::{self, Config, EngineKind};
+use lisa_inferenced::engine::{Engine, StubEngine};
+use lisa_inferenced::{api, dbus, llama};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tracing::{info, warn};
+
+#[derive(Parser)]
+#[command(
+    name = "lisa-inferenced",
+    about = "Lisa OS model runtime & scheduler (M0 scaffold)"
+)]
+struct Args {
+    /// TOML config path; defaults are used when omitted.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Override the bind address (default 127.0.0.1:7777).
+    #[arg(long)]
+    bind: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    let args = Args::parse();
+    let mut cfg = Config::load(args.config.as_deref())?;
+    if let Some(bind) = args.bind {
+        cfg.bind = config::Bind(bind);
+    }
+
+    let engine: Arc<dyn Engine> = match cfg.engine {
+        EngineKind::Stub => Arc::new(StubEngine),
+        EngineKind::Llama => {
+            let llama = llama::LlamaEngine::new(cfg.llama.clone());
+            if let Err(e) = llama.ensure_running().await {
+                warn!("llama-server unavailable ({e}); requests will fail until M1 wiring");
+            }
+            Arc::new(llama)
+        }
+    };
+    info!(engine = engine.name(), "engine initialized");
+
+    // D-Bus is opt-in during M0; never fatal.
+    let _dbus_conn = if cfg.dbus {
+        match dbus::serve().await {
+            Ok(conn) => {
+                info!("org.lisa.Inference1 registered on the session bus");
+                Some(conn)
+            }
+            Err(e) => {
+                warn!("D-Bus unavailable, continuing HTTP-only: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let state = api::AppState {
+        engine,
+        model_name: "lisa-system-stub".to_string(),
+    };
+    let listener = tokio::net::TcpListener::bind(&cfg.bind.0).await?;
+    info!("OpenAI-compat endpoint on http://{}", cfg.bind.0);
+    axum::serve(listener, api::router(state))
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+            info!("shutting down");
+        })
+        .await?;
+    Ok(())
+}

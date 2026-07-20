@@ -1,0 +1,113 @@
+# Lisa OS model catalog — SEED DATA, NOT LAW (docs/PLAN.md §0.4, §7).
+# Verify current best-in-class models at build time; this file records the
+# July 2026 planning lineup. `source`/`blake3` stay unset until M1 pins the
+# exact artifacts after license review — placeholder URLs are never invented.
+#
+# In production this index is fetched signed (TUF-style) and refreshed
+# daily; `revoked = true` quarantines a model (PLAN §5.10).
+
+catalog_version = 1
+
+[[model]]
+id = "qwen3-8b-instruct-q4"
+task = "system"
+tiers = [2]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 16
+notes = "Primary system model for Tier 2 reference hardware."
+
+[[model]]
+id = "qwen3-4b-instruct-q4"
+task = "system"
+tiers = [0, 1]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 8
+notes = "Small system model; honest floor for Tier 0/1."
+
+[[model]]
+id = "qwen3-30b-a3b-q4"
+task = "system"
+tiers = [3, 4]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 32
+notes = "Big system model for Tier 3/4; re-verify best <=32B at build time."
+
+[[model]]
+id = "qwen2.5-vl-7b-q4"
+task = "vision"
+tiers = [2, 3, 4]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 16
+notes = "Screen context + Photos captioning."
+
+[[model]]
+id = "nomic-embed-text-v1.5"
+task = "embeddings"
+tiers = [0, 1, 2, 3, 4]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 4
+notes = "Context Fabric embeddings; EmbeddingGemma-300m is the alternate."
+
+[[model]]
+id = "bge-reranker-v2-m3"
+task = "reranker"
+tiers = [2, 3, 4]
+license = "Apache-2.0"
+engine = "onnx"
+min_ram_gb = 8
+notes = "Skipped on Tier 0/1 (BM25+vector only)."
+
+[[model]]
+id = "whisper-large-v3-turbo"
+task = "asr"
+tiers = [2, 3, 4]
+license = "MIT"
+engine = "whisper-cpp"
+min_ram_gb = 8
+
+[[model]]
+id = "whisper-small"
+task = "asr"
+tiers = [0, 1]
+license = "MIT"
+engine = "whisper-cpp"
+min_ram_gb = 4
+
+[[model]]
+id = "piper-voices-base"
+task = "tts"
+tiers = [0, 1, 2, 3, 4]
+license = "MIT"
+engine = "piper"
+min_ram_gb = 2
+
+[[model]]
+id = "openwakeword"
+task = "wake-word"
+tiers = [0, 1, 2, 3, 4]
+license = "Apache-2.0"
+engine = "onnx"
+min_ram_gb = 1
+
+[[model]]
+id = "qwen2.5-coder-7b-q4"
+task = "code"
+tiers = [2, 3, 4]
+license = "Apache-2.0"
+engine = "llama-server"
+min_ram_gb = 16
+notes = "Forge default; re-verify best local coder at build time (PLAN §13)."
+
+[[model]]
+id = "flux1-schnell"
+task = "image-gen"
+tiers = [3, 4]
+license = "Apache-2.0"
+engine = "sd-cpp"
+min_ram_gb = 24
+notes = "Optional pack; license surfaced in UI before download."
