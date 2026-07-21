@@ -20,8 +20,14 @@ backlog item. Nightly CI:
   fails twice (reboots), exhausts its counters (renamed `+0-2` in the
   ESP), and the good entry boots to a clean poweroff. Real UEFI via
   OVMF, so systemd-boot itself is exercised.
+- `ab-sysupdate` job: **the update direction demonstrated** — v1 boots,
+  `systemd-sysupdate` pulls a v2 (root partition image + UKI, with
+  SHA256SUMS manifest) over HTTP, installs it into the `_empty` slot
+  (relabeled `root_2`), reboots, and v2 boots from slot B to a clean
+  poweroff. The PLAN §10 "A/B update + rollback demonstrated" line is
+  closed.
 
-Remaining for the full Track I story: root-partition A/B via
-`systemd-sysupdate` (+ verity), swtpm in the boot test.
+Remaining for the full Track I story: dm-verity on the root slots,
+swtpm in the boot test, signed sysupdate sources (M1 repo).
 
 Requires Linux; on macOS dev hosts this directory is CI-only.
