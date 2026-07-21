@@ -69,15 +69,17 @@ jobs:
         run: |
           sudo podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
             docker.io/library/archlinux:latest /usr/lib/systemd/systemd
-          # Bounded wait for PID1 to answer; --wait can hang forever if a
-          # unit never settles in the container.
-          timeout 60 sudo podman exec lisa-e2e bash -c \
-            'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 1; done' \
-            || echo "systemd state: $(sudo podman exec lisa-e2e systemctl is-system-running || true) — proceeding"
-          # Diagnose stalled transactions up front: every PID1 D-Bus op on
-          # runners has shown ~90 s stalls (default job timeout) — surface
-          # which unit/job is wedged.
-          sudo podman exec lisa-e2e systemctl list-jobs --no-pager || true
+          # systemd on runners can take several 90 s job-timeout cycles to
+          # settle; require running|degraded before testing — piling work
+          # onto an "initializing" PID1 is what produced the endless hangs.
+          if ! timeout 300 sudo podman exec lisa-e2e bash -c \
+            'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 2; done'; then
+            echo "::error::systemd never settled; boot journal follows"
+            # journalctl reads journal files directly — works even when
+            # PID1's bus is unresponsive.
+            sudo podman exec lisa-e2e journalctl -b --no-pager | tail -150 || true
+            exit 1
+          fi
           sudo podman exec lisa-e2e systemctl list-units --failed --no-pager || true
       - name: Run layer e2e
         run: sudo podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
