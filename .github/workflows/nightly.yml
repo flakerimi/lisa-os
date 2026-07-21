@@ -63,23 +63,39 @@ jobs:
   # this exercises systemd-boot itself, unlike the direct-kernel job.
   ab-rollback:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    needs: image
     steps:
-      - uses: actions/checkout@v5
-      - name: Build demo image (broken newer UKI + try counters)
+      - name: Download built image
+        uses: actions/download-artifact@v4
+        with:
+          name: lisa-image
+      - name: Stage A/B demo UKIs in the ESP (mtools, no rebuild)
         run: |
-          sudo podman run --rm --privileged \
-            -v "$PWD":/src -w /src -e LISA_AB_DEMO=1 \
-            docker.io/library/archlinux:latest bash -ec '
-              sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
-              pacman -Syu --noconfirm mkosi binutils
-              mkosi --directory os/mkosi build
-            '
-          sudo chown -R "$USER:" os/mkosi
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y --no-install-recommends mtools fdisk jq binutils >/dev/null
+          ls -l lisa*.raw
+          # ESP = partition 1; mtools addresses it as an offset into the raw.
+          OFF=$(( $(sfdisk -J lisa.raw | jq -r '.partitiontable.partitions[0].start') * 512 ))
+          ESP="lisa.raw@@$OFF"
+          NAME=$(mdir -b -i "$ESP" ::/EFI/Linux/ | grep -o 'lisa-[^/]*\.efi' | head -1)
+          echo "good UKI: $NAME (ESP offset $OFF)"
+          mcopy -i "$ESP" "::/EFI/Linux/$NAME" good.efi
+          # Good entry: serial console + clean poweroff so QEMU exits on
+          # success. No try counters = permanently valid entry.
+          printf 'root=/dev/vda2 rw console=ttyS0 lisa_demo=good systemd.unit=poweroff.target' >good.cmdline
+          objcopy --update-section .cmdline=good.cmdline good.efi good-demo.efi
+          # Bad entry: version 99 outranks the good entry; nonexistent
+          # root forces an initrd timeout; rd.emergency=reboot turns the
+          # failure into a reboot so the +2 try counter decrements.
+          printf 'root=PARTUUID=00000000-0000-0000-0000-000000000000 rw console=ttyS0 lisa_demo=bad rd.emergency=reboot panic=5' >bad.cmdline
+          objcopy --update-section .cmdline=bad.cmdline good.efi bad-demo.efi
+          mcopy -o -i "$ESP" good-demo.efi "::/EFI/Linux/$NAME"
+          mcopy -i "$ESP" bad-demo.efi "::/EFI/Linux/lisa-99+2.efi"
+          mdir -i "$ESP" ::/EFI/Linux/
       - name: Boot-counting rollback demo (UEFI QEMU)
         run: |
           set -o pipefail
-          sudo apt-get update -qq
           sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 ovmf >/dev/null
           cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
           # No -no-reboot: the failed tries MUST reboot for the counters
@@ -88,7 +104,7 @@ jobs:
             -machine q35 -accel kvm -accel tcg -m 4G -nographic \
             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
             -drive if=pflash,format=raw,file=vars.fd \
-            -drive file=os/mkosi/lisa.raw,format=raw,if=virtio \
+            -drive file=lisa.raw,format=raw,if=virtio \
             | tee console.log
           echo "--- assertions"
           grep -q "lisa_demo=bad" console.log
