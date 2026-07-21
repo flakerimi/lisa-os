@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A/B boot-counting rollback demo (M0 acceptance, PLAN §3/§10).
+#
+# Only active when LISA_AB_DEMO=1 (CI's ab-rollback job): stages a
+# deliberately-broken, HIGHER-version UKI carrying systemd-boot try
+# counters (+2) beside the good one, and points the good one at serial
+# console + clean poweroff so QEMU can assert the sequence:
+#   bad entry preferred -> two failed tries -> automatic fallback ->
+#   good entry boots -> poweroff.
+# Production builds: no-op.
+set -euo pipefail
+[ "${LISA_AB_DEMO:-0}" = "1" ] || exit 0
+
+esp_dir="$BUILDROOT/boot/EFI/Linux"
+good=$(find "$esp_dir" -name 'lisa-*.efi' | head -1)
+[ -n "$good" ] || { echo "AB demo: no UKI found in $esp_dir" >&2; exit 1; }
+
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT
+
+# Good entry (no counters = permanently valid): serial console so the
+# test can see it, poweroff target so success exits QEMU cleanly.
+printf 'root=/dev/vda2 rw console=ttyS0 lisa_demo=good systemd.unit=poweroff.target' \
+    >"$workdir/good.cmdline"
+objcopy --update-section .cmdline="$workdir/good.cmdline" "$good"
+
+# Bad entry: version 99 outranks the good entry in systemd-boot's sort;
+# a nonexistent root forces an initrd timeout; rd.emergency=reboot turns
+# the failure into a reboot so the try counter decrements; +2 = two
+# tries before the entry is marked bad and sorted last.
+printf 'root=PARTUUID=00000000-0000-0000-0000-000000000000 rw console=ttyS0 lisa_demo=bad rd.emergency=reboot panic=5' \
+    >"$workdir/bad.cmdline"
+objcopy --update-section .cmdline="$workdir/bad.cmdline" "$good" "$esp_dir/lisa-99+2.efi"
+
+echo "AB demo staged: $(basename "$good") (good) + lisa-99+2.efi (bad, 2 tries)"

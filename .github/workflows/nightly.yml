@@ -55,3 +55,46 @@ jobs:
           path: os/mkosi/lisa*.raw
           if-no-files-found: warn
           retention-days: 7
+
+  # M0 acceptance (PLAN §10): A/B update + rollback demonstrated. A
+  # broken higher-version UKI with +2 try counters is preferred by
+  # systemd-boot, fails twice (initrd timeout -> reboot), exhausts its
+  # tries, and the good entry boots automatically. Real UEFI via OVMF —
+  # this exercises systemd-boot itself, unlike the direct-kernel job.
+  ab-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build demo image (broken newer UKI + try counters)
+        run: |
+          sudo podman run --rm --privileged \
+            -v "$PWD":/src -w /src -e LISA_AB_DEMO=1 \
+            docker.io/library/archlinux:latest bash -ec '
+              sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
+              pacman -Syu --noconfirm mkosi binutils
+              mkosi --directory os/mkosi build
+            '
+          sudo chown -R "$USER:" os/mkosi
+      - name: Boot-counting rollback demo (UEFI QEMU)
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 ovmf >/dev/null
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+          # No -no-reboot: the failed tries MUST reboot for the counters
+          # to decrement. Success = good entry powers off -> QEMU exits.
+          timeout 900 qemu-system-x86_64 \
+            -machine q35 -accel kvm -accel tcg -m 4G -nographic \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=os/mkosi/lisa.raw,format=raw,if=virtio \
+            | tee console.log
+          echo "--- assertions"
+          grep -q "lisa_demo=bad" console.log
+          grep -q "lisa_demo=good" console.log
+          BAD=$(grep -n "lisa_demo=bad" console.log | head -1 | cut -d: -f1)
+          GOOD=$(grep -n "lisa_demo=good" console.log | head -1 | cut -d: -f1)
+          [ "$BAD" -lt "$GOOD" ]
+          grep -q "Welcome to" console.log
+          echo "ROLLBACK DEMO: PASS (bad tried first at line $BAD, good booted at line $GOOD)"
