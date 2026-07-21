@@ -12,6 +12,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use futures::StreamExt;
+use lisa_ledger::{Event as LedgerEvent, Ledger, preview_of};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -19,6 +20,21 @@ pub struct AppState {
     pub engine: Arc<dyn Engine>,
     pub scheduler: Arc<Scheduler>,
     pub model_name: String,
+    pub ledger: Arc<Ledger>,
+}
+
+/// Dataflow rule 4 (PLAN §4): the ledger entry precedes the action —
+/// if the ledger cannot record it, the action must not happen.
+fn ledger_gate(ledger: &Ledger, event: &LedgerEvent) -> Result<i64, Response> {
+    ledger.append(event).map_err(|e| {
+        (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": {
+                "message": format!("refusing to run without a ledger entry: {e}"),
+            }})),
+        )
+            .into_response()
+    })
 }
 
 pub fn router(state: AppState) -> Router {
@@ -47,23 +63,64 @@ async fn embeddings(State(state): State<AppState>, Json(req): Json<serde_json::V
         )
             .into_response();
     }
+    let started = std::time::Instant::now();
+    let entry_id = match ledger_gate(
+        &state.ledger,
+        &LedgerEvent {
+            kind: "inference.embed".into(),
+            app_id: "host".into(),
+            model: state.model_name.clone(),
+            input_hash: blake3::hash(texts.join("\n").as_bytes())
+                .to_hex()
+                .to_string(),
+            preview: preview_of(&texts.join(" | ")),
+            status: "started".into(),
+            ..Default::default()
+        },
+    ) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
     match state.engine.embed(texts).await {
-        Ok(vectors) => Json(serde_json::json!({
-            "object": "list",
-            "model": state.model_name,
-            "data": vectors.iter().enumerate().map(|(i, v)| serde_json::json!({
-                "object": "embedding",
-                "index": i,
-                "embedding": v,
-            })).collect::<Vec<_>>(),
-            "usage": {"prompt_tokens": 0, "total_tokens": 0},
-        }))
-        .into_response(),
-        Err(e) => (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error": {"message": e.to_string()}})),
-        )
-            .into_response(),
+        Ok(vectors) => {
+            let _ = state.ledger.append(&LedgerEvent {
+                kind: "inference.complete".into(),
+                app_id: "host".into(),
+                model: state.model_name.clone(),
+                status: "ok".into(),
+                ref_id: Some(entry_id),
+                duration_ms: started.elapsed().as_millis() as i64,
+                ..Default::default()
+            });
+            Json(serde_json::json!({
+                "object": "list",
+                "model": state.model_name,
+                "data": vectors.iter().enumerate().map(|(i, v)| serde_json::json!({
+                    "object": "embedding",
+                    "index": i,
+                    "embedding": v,
+                })).collect::<Vec<_>>(),
+                "usage": {"prompt_tokens": 0, "total_tokens": 0},
+            }))
+            .into_response()
+        }
+        Err(e) => {
+            let _ = state.ledger.append(&LedgerEvent {
+                kind: "inference.complete".into(),
+                app_id: "host".into(),
+                model: state.model_name.clone(),
+                status: "error".into(),
+                detail: e.to_string(),
+                ref_id: Some(entry_id),
+                duration_ms: started.elapsed().as_millis() as i64,
+                ..Default::default()
+            });
+            (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": {"message": e.to_string()}})),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -126,12 +183,43 @@ async fn chat_completions(
         max_tokens: req.max_tokens,
     };
 
+    let prompt_all = gen_req
+        .messages
+        .iter()
+        .map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let started_at = std::time::Instant::now();
+    let entry_id = match ledger_gate(
+        &state.ledger,
+        &LedgerEvent {
+            kind: "inference.generate".into(),
+            app_id: "host".into(),
+            model: model.clone(),
+            input_hash: blake3::hash(prompt_all.as_bytes()).to_hex().to_string(),
+            preview: preview_of(&prompt_all),
+            status: "started".into(),
+            detail: if guided {
+                "guided".into()
+            } else {
+                String::new()
+            },
+            ..Default::default()
+        },
+    ) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     if req.stream {
         let stream = state.engine.generate(gen_req);
         let stream = state.scheduler.admit(priority, stream).await;
         let chunk_id = id.clone();
         let chunk_model = model.clone();
+        let ledger = Arc::clone(&state.ledger);
         let sse = async_stream::stream! {
+            let mut streamed_tokens: i64 = 0;
+            let mut stream_status = String::from("ok");
             // Role preamble chunk, per OpenAI streaming convention.
             yield sse_json(&ChatCompletionChunk {
                 id: chunk_id.clone(),
@@ -147,18 +235,26 @@ async fn chat_completions(
             let mut stream = stream;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(token) => yield sse_json(&ChatCompletionChunk {
-                        id: chunk_id.clone(),
-                        object: "chat.completion.chunk",
-                        created,
-                        model: chunk_model.clone(),
-                        choices: vec![ChunkChoice {
-                            index: 0,
-                            delta: Delta { role: None, content: Some(token) },
-                            finish_reason: None,
-                        }],
-                    }),
+                    Ok(token) => {
+                        streamed_tokens += 1;
+                        yield sse_json(&ChatCompletionChunk {
+                            id: chunk_id.clone(),
+                            object: "chat.completion.chunk",
+                            created,
+                            model: chunk_model.clone(),
+                            choices: vec![ChunkChoice {
+                                index: 0,
+                                delta: Delta { role: None, content: Some(token) },
+                                finish_reason: None,
+                            }],
+                        })
+                    }
                     Err(e) => {
+                        stream_status = if matches!(e, crate::engine::EngineError::Preempted) {
+                            "preempted".into()
+                        } else {
+                            "error".into()
+                        };
                         yield Ok(Event::default()
                             .data(serde_json::json!({"error": {"message": e.to_string()}}).to_string()));
                         break;
@@ -175,6 +271,16 @@ async fn chat_completions(
                     delta: Delta::default(),
                     finish_reason: Some("stop"),
                 }],
+            });
+            let _ = ledger.append(&LedgerEvent {
+                kind: "inference.complete".into(),
+                app_id: "host".into(),
+                model: chunk_model.clone(),
+                status: stream_status.clone(),
+                ref_id: Some(entry_id),
+                output_tokens: streamed_tokens,
+                duration_ms: started_at.elapsed().as_millis() as i64,
+                ..Default::default()
             });
             yield Ok(Event::default().data("[DONE]"));
         };
@@ -205,6 +311,16 @@ async fn chat_completions(
             }
         }
         if let Some(e) = failed {
+            let _ = state.ledger.append(&LedgerEvent {
+                kind: "inference.complete".into(),
+                app_id: "host".into(),
+                model: model.clone(),
+                status: "error".into(),
+                detail: e.to_string(),
+                ref_id: Some(entry_id),
+                duration_ms: started_at.elapsed().as_millis() as i64,
+                ..Default::default()
+            });
             return (
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({"error": {"message": e.to_string()}})),
@@ -217,6 +333,16 @@ async fn chat_completions(
         tracing::warn!(attempt, "guided output was not valid JSON; re-sampling");
     }
     let completion_tokens = content.split_whitespace().count() as u32;
+    let _ = state.ledger.append(&LedgerEvent {
+        kind: "inference.complete".into(),
+        app_id: "host".into(),
+        model: model.clone(),
+        status: "ok".into(),
+        ref_id: Some(entry_id),
+        output_tokens: i64::from(completion_tokens),
+        duration_ms: started_at.elapsed().as_millis() as i64,
+        ..Default::default()
+    });
     Json(ChatCompletionResponse {
         id,
         object: "chat.completion",

@@ -60,8 +60,18 @@ enum Command {
     Call,
     /// Revert the last agent action (lands in M5, PLAN §5.4).
     Undo,
-    /// Query the audit ledger (lands in M2, PLAN §5.7.6).
-    Ledger,
+    /// Read the append-only audit ledger (PLAN §5.7.6).
+    Ledger {
+        /// Show the most recent N entries.
+        #[arg(long, default_value_t = 20)]
+        tail: usize,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+        /// Ledger DB path (default: /var/lib/lisa or ~/.local/share/lisa).
+        #[arg(long, env = "LISA_LEDGER_DB")]
+        db: Option<PathBuf>,
+    },
     /// Embed text into a vector (reads stdin when piped).
     Embed {
         text: Vec<String>,
@@ -129,7 +139,7 @@ fn run() -> anyhow::Result<()> {
         Command::Tools | Command::Call | Command::Undo => {
             bail!("the Agent Bus lands in M5 — see docs/PLAN.md §5.4")
         }
-        Command::Ledger => bail!("the Ledger lands in M2 — see docs/PLAN.md §5.7.6"),
+        Command::Ledger { tail, json, db } => ledger_cmd(tail, json, db),
         Command::Embed { text, url } => embed(text, &url),
     }
 }
@@ -220,6 +230,37 @@ fn ask(
 }
 
 use std::io::IsTerminal;
+
+fn ledger_cmd(tail: usize, json: bool, db: Option<PathBuf>) -> anyhow::Result<()> {
+    let path = db.unwrap_or_else(lisa_ledger::Ledger::default_path);
+    if !path.exists() {
+        bail!(
+            "no ledger at {} — it is created by lisa-inferenced on first start",
+            path.display()
+        );
+    }
+    let ledger = lisa_ledger::Ledger::open(&path)?;
+    let entries = ledger.tail(tail)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+        return Ok(());
+    }
+    println!(
+        "{} entries total — showing {} (ledger: {})",
+        ledger.count()?,
+        entries.len(),
+        path.display()
+    );
+    for e in &entries {
+        let secs = e.ts / 1000;
+        let refmark = e.ref_id.map(|r| format!(" ->#{r}")).unwrap_or_default();
+        println!(
+            "#{:<5} {}  {:<19} {:<9} {:>5}tok {:>6}ms{}  {}",
+            e.id, secs, e.kind, e.status, e.output_tokens, e.duration_ms, refmark, e.preview
+        );
+    }
+    Ok(())
+}
 
 fn embed(text: Vec<String>, url: &str) -> anyhow::Result<()> {
     let mut text = text.join(" ");

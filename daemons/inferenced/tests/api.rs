@@ -10,12 +10,51 @@ use tower::ServiceExt;
 use lisa_inferenced::{api, engine, scheduler};
 use std::sync::Arc;
 
+fn test_state() -> (tempfile::TempDir, api::AppState) {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = lisa_ledger::Ledger::open(dir.path().join("ledger.db")).unwrap();
+    (
+        dir,
+        api::AppState {
+            engine: Arc::new(engine::StubEngine),
+            scheduler: Arc::new(scheduler::Scheduler::new(1)),
+            model_name: "lisa-system-stub".to_string(),
+            ledger: Arc::new(ledger),
+        },
+    )
+}
+
 fn test_router() -> axum::Router {
-    api::router(api::AppState {
-        engine: Arc::new(engine::StubEngine),
-        scheduler: Arc::new(scheduler::Scheduler::new(1)),
-        model_name: "lisa-system-stub".to_string(),
-    })
+    let (dir, state) = test_state();
+    std::mem::forget(dir); // keep the temp ledger alive for the test
+    api::router(state)
+}
+
+#[tokio::test]
+async fn every_inference_is_ledgered_before_and_after() {
+    let (_dir, state) = test_state();
+    let ledger = Arc::clone(&state.ledger);
+    let router = api::router(state);
+    let req = Request::post("/v1/chat/completions")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "messages": [{"role": "user", "content": "audit me"}]
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = router.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let entries = ledger.tail(10).unwrap();
+    assert_eq!(entries.len(), 2, "start + completion entries: {entries:?}");
+    assert_eq!(entries[1].kind, "inference.generate");
+    assert_eq!(entries[1].status, "started");
+    assert!(entries[1].preview.contains("audit me"));
+    assert_eq!(entries[0].kind, "inference.complete");
+    assert_eq!(entries[0].status, "ok");
+    assert_eq!(entries[0].ref_id, Some(entries[1].id));
+    assert!(entries[0].output_tokens > 0);
 }
 
 #[tokio::test]

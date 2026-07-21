@@ -95,10 +95,20 @@ async fn main() -> anyhow::Result<()> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "lisa-system".to_string()),
     };
+    // No ledger, no inference (PLAN §4 rule 4): refuse to serve at all
+    // if the audit log cannot be opened.
+    let ledger_path = std::env::var_os("LISA_LEDGER_DB")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(lisa_ledger::Ledger::default_path);
+    let ledger = lisa_ledger::Ledger::open(&ledger_path)
+        .map_err(|e| anyhow::anyhow!("cannot open ledger {}: {e}", ledger_path.display()))?;
+    info!(ledger = %ledger_path.display(), "ledger open (append-only)");
+
     let state = api::AppState {
         engine,
         scheduler,
         model_name,
+        ledger: Arc::new(ledger),
     };
     let listener = tokio::net::TcpListener::bind(&cfg.bind.0).await?;
     info!("OpenAI-compat endpoint on http://{}", cfg.bind.0);
