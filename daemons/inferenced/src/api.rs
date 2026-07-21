@@ -3,8 +3,9 @@
 //! attaches here (M2); guided generation (JSON Schema → GBNF via
 //! `liblisa::grammar`) is threaded through to the engine in M1.
 
-use crate::engine::Engine;
+use crate::engine::{Engine, GenerateRequest};
 use crate::openai::*;
+use crate::scheduler::{Priority, Scheduler};
 use axum::Router;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -16,6 +17,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub engine: Arc<dyn Engine>,
+    pub scheduler: Arc<Scheduler>,
     pub model_name: String,
 }
 
@@ -57,7 +59,34 @@ async fn chat_completions(
         .unwrap_or_else(|| state.model_name.clone());
     let id = format!("chatcmpl-lisa-{}", unix_now());
     let created = unix_now();
-    let stream = state.engine.generate(req.messages);
+
+    // Guided generation: JSON Schema → GBNF, enforced by the sampler.
+    let grammar = match &req.response_format {
+        Some(rf) if rf["type"] == "json_schema" => {
+            match liblisa::grammar::json_schema_to_gbnf(&rf["json_schema"]["schema"]) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    return (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": {
+                            "message": format!("response_format schema not supported: {e}"),
+                            "type": "invalid_request_error",
+                        }})),
+                    )
+                        .into_response();
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let priority = Priority::parse(req.lisa_priority.as_deref());
+    let stream = state.engine.generate(GenerateRequest {
+        messages: req.messages,
+        grammar,
+        max_tokens: req.max_tokens,
+    });
+    let stream = state.scheduler.admit(priority, stream).await;
 
     if req.stream {
         let chunk_id = id.clone();

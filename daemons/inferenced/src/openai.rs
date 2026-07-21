@@ -13,6 +13,17 @@ pub struct ChatCompletionRequest {
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub stream: bool,
+    /// OpenAI structured-outputs shape: {"type":"json_schema",
+    /// "json_schema":{"name":..., "schema":{...}}} — compiled to GBNF via
+    /// liblisa and enforced by the sampler (guided generation).
+    #[serde(default)]
+    pub response_format: Option<serde_json::Value>,
+    /// Lisa extension: "interactive" (default) | "background". Background
+    /// requests are preempted by interactive ones (PLAN §5.1).
+    #[serde(default)]
+    pub lisa_priority: Option<String>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

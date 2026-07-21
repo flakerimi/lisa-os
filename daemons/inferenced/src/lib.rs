@@ -8,3 +8,4 @@ pub mod dbus;
 pub mod engine;
 pub mod llama;
 pub mod openai;
+pub mod scheduler;

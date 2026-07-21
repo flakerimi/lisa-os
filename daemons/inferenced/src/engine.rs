@@ -1,8 +1,7 @@
 //! Engine abstraction. `lisa-inferenced` is a *supervisor, not an engine*
 //! (`docs/PLAN.md` §5.1): real inference happens in child processes
 //! (llama-server et al.); this trait is the seam between the scheduler/API
-//! side and those children. M0 ships the deterministic stub; llama-server
-//! proxying lands in M1.
+//! side and those children.
 
 use crate::openai::ChatMessage;
 use futures::Stream;
@@ -13,13 +12,24 @@ use std::time::Duration;
 pub enum EngineError {
     #[error("engine unavailable: {0}")]
     Unavailable(String),
+    #[error("preempted by an interactive request")]
+    Preempted,
 }
 
 pub type TokenStream = Pin<Box<dyn Stream<Item = Result<String, EngineError>> + Send>>;
 
+/// Everything an engine needs for one generation.
+#[derive(Debug, Clone)]
+pub struct GenerateRequest {
+    pub messages: Vec<ChatMessage>,
+    /// GBNF grammar constraining sampling (guided generation, §5.1/§5.6).
+    pub grammar: Option<String>,
+    pub max_tokens: Option<u32>,
+}
+
 pub trait Engine: Send + Sync {
     fn name(&self) -> &'static str;
-    fn generate(&self, messages: Vec<ChatMessage>) -> TokenStream;
+    fn generate(&self, req: GenerateRequest) -> TokenStream;
 }
 
 /// Deterministic echo engine: proves the full plumbing (HTTP, SSE, CLI)
@@ -32,8 +42,9 @@ impl Engine for StubEngine {
         "stub"
     }
 
-    fn generate(&self, messages: Vec<ChatMessage>) -> TokenStream {
-        let last_user = messages
+    fn generate(&self, req: GenerateRequest) -> TokenStream {
+        let last_user = req
+            .messages
             .iter()
             .rev()
             .find(|m| m.role == "user")
@@ -41,7 +52,7 @@ impl Engine for StubEngine {
             .unwrap_or_default();
         let reply = format!(
             "[lisa-inferenced stub] You said: \u{201c}{last_user}\u{201d}. \
-             Real engines land in M1 — see docs/PLAN.md \u{a7}5.1."
+             Run a real engine with --model (see `just smoke-real`)."
         );
         let tokens: Vec<String> = reply.split_inclusive(' ').map(str::to_string).collect();
         Box::pin(async_stream::stream! {
@@ -61,18 +72,22 @@ mod tests {
     #[tokio::test]
     async fn stub_echoes_last_user_message() {
         let engine = StubEngine;
-        let msgs = vec![
-            ChatMessage {
-                role: "system".into(),
-                content: "policy".into(),
-            },
-            ChatMessage {
-                role: "user".into(),
-                content: "hello lisa".into(),
-            },
-        ];
+        let req = GenerateRequest {
+            messages: vec![
+                ChatMessage {
+                    role: "system".into(),
+                    content: "policy".into(),
+                },
+                ChatMessage {
+                    role: "user".into(),
+                    content: "hello lisa".into(),
+                },
+            ],
+            grammar: None,
+            max_tokens: None,
+        };
         let text: String = engine
-            .generate(msgs)
+            .generate(req)
             .map(|t| t.unwrap())
             .collect::<Vec<_>>()
             .await

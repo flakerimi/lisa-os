@@ -7,12 +7,13 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use lisa_inferenced::{api, engine};
+use lisa_inferenced::{api, engine, scheduler};
 use std::sync::Arc;
 
 fn test_router() -> axum::Router {
     api::router(api::AppState {
         engine: Arc::new(engine::StubEngine),
+        scheduler: Arc::new(scheduler::Scheduler::new(1)),
         model_name: "lisa-system-stub".to_string(),
     })
 }

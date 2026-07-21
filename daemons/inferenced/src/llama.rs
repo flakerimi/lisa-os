@@ -7,8 +7,7 @@
 //! resident model, LoRA hot-swap, VRAM budget arbitration, QoS scheduler.
 
 use crate::config::LlamaConfig;
-use crate::engine::{Engine, EngineError, TokenStream};
-use crate::openai::ChatMessage;
+use crate::engine::{Engine, EngineError, GenerateRequest, TokenStream};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
@@ -113,17 +112,22 @@ impl Inner {
 
     /// One streaming completion request against the child; yields token
     /// deltas parsed from its OpenAI-compat SSE stream.
-    async fn open_stream(
-        &self,
-        messages: &[ChatMessage],
-    ) -> Result<reqwest::Response, EngineError> {
+    async fn open_stream(&self, req: &GenerateRequest) -> Result<reqwest::Response, EngineError> {
+        // Cap tokens even when the client doesn't: a runaway generation
+        // (e.g. an unbounded grammar rule) must not hold the slot forever.
+        let mut body = serde_json::json!({
+            "messages": req.messages,
+            "stream": true,
+            "max_tokens": req.max_tokens.unwrap_or(2048),
+        });
+        if let Some(grammar) = &req.grammar {
+            // llama-server extension: GBNF grammar constrains sampling.
+            body["grammar"] = serde_json::Value::String(grammar.clone());
+        }
         let response = self
             .client
             .post(self.endpoint())
-            .json(&serde_json::json!({
-                "messages": messages,
-                "stream": true,
-            }))
+            .json(&body)
             .send()
             .await
             .map_err(|e| EngineError::Unavailable(format!("llama-server request: {e}")))?;
@@ -144,7 +148,7 @@ impl Engine for LlamaEngine {
         "llama"
     }
 
-    fn generate(&self, messages: Vec<ChatMessage>) -> TokenStream {
+    fn generate(&self, req: GenerateRequest) -> TokenStream {
         let inner = Arc::clone(&self.inner);
         Box::pin(async_stream::stream! {
             if let Err(e) = inner.ensure_running().await {
@@ -153,12 +157,12 @@ impl Engine for LlamaEngine {
             }
             // One retry: the child may have died since the health check
             // (crash-restore path).
-            let response = match inner.open_stream(&messages).await {
+            let response = match inner.open_stream(&req).await {
                 Ok(r) => Ok(r),
                 Err(first) => {
                     warn!("llama-server request failed ({first}); respawning and retrying once");
                     match inner.ensure_running().await {
-                        Ok(()) => inner.open_stream(&messages).await,
+                        Ok(()) => inner.open_stream(&req).await,
                         Err(e) => Err(e),
                     }
                 }

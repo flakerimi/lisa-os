@@ -38,6 +38,13 @@ enum Command {
         /// Wait for the full response instead of streaming tokens.
         #[arg(long)]
         no_stream: bool,
+        /// Guided generation: path to a JSON Schema file; output is
+        /// grammar-constrained to match it.
+        #[arg(long)]
+        json_schema: Option<PathBuf>,
+        /// Run at background priority (preempted by interactive requests).
+        #[arg(long)]
+        background: bool,
     },
     /// Manage the local model store (PLAN §5.2).
     Models {
@@ -105,7 +112,9 @@ fn run() -> anyhow::Result<()> {
             url,
             model,
             no_stream,
-        } => ask(prompt, &url, model, no_stream),
+            json_schema,
+            background,
+        } => ask(prompt, &url, model, no_stream, json_schema, background),
         Command::Models { cmd, store } => models(cmd, store),
         Command::Tools | Command::Call | Command::Undo => {
             bail!("the Agent Bus lands in M5 — see docs/PLAN.md §5.4")
@@ -119,6 +128,8 @@ fn ask(
     url: &str,
     model: Option<String>,
     no_stream: bool,
+    json_schema: Option<PathBuf>,
+    background: bool,
 ) -> anyhow::Result<()> {
     let mut prompt = prompt.join(" ");
     // Piped stdin becomes context, shell-pipeline style (PLAN §5.4).
@@ -133,11 +144,25 @@ fn ask(
         bail!("empty prompt — usage: lisa ask \"your question\"");
     }
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": !no_stream,
     });
+    if let Some(path) = json_schema {
+        let schema: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .with_context(|| format!("reading schema {}", path.display()))?,
+        )
+        .with_context(|| format!("parsing schema {}", path.display()))?;
+        body["response_format"] = serde_json::json!({
+            "type": "json_schema",
+            "json_schema": { "name": "schema", "schema": schema, "strict": true },
+        });
+    }
+    if background {
+        body["lisa_priority"] = "background".into();
+    }
     let endpoint = format!("{}/v1/chat/completions", url.trim_end_matches('/'));
     let mut response = ureq::post(&endpoint).send_json(&body).with_context(|| {
         format!(

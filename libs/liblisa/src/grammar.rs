@@ -98,7 +98,24 @@ impl Generator {
             .ok_or_else(|| GrammarError::Unsupported("schema without a `type`".into()))?;
 
         match ty {
-            "string" => Ok(self.primitive("string")),
+            "string" => {
+                let min = obj.get("minLength").and_then(Value::as_u64);
+                let max = obj.get("maxLength").and_then(Value::as_u64);
+                if min.is_none() && max.is_none() {
+                    return Ok(self.primitive("string"));
+                }
+                // Bounded string: repeat the character class {min,max} so
+                // the grammar itself terminates (structural loop bound).
+                self.primitive("space");
+                let char_rule = self.define(
+                    "string-char",
+                    r#"( [^"\\] | "\\" (["\\bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]) )"#,
+                );
+                Ok(format!(
+                    r#""\"" {char_rule}{} "\"" space"#,
+                    repetition(min.unwrap_or(0), max)
+                ))
+            }
             "number" => Ok(self.primitive("number")),
             "integer" => Ok(self.primitive("integer")),
             "boolean" => Ok(self.primitive("boolean")),
@@ -109,9 +126,33 @@ impl Generator {
                     .ok_or_else(|| GrammarError::Unsupported("array without `items`".into()))?;
                 let item_rule = self.named(items, &format!("{name}-item"))?;
                 self.primitive("space");
-                Ok(format!(
-                    r#""[" space ( {item_rule} ( "," space {item_rule} )* )? "]" space"#
-                ))
+                let min = obj.get("minItems").and_then(Value::as_u64).unwrap_or(0);
+                let max = obj.get("maxItems").and_then(Value::as_u64);
+                if let Some(max) = max
+                    && max < min
+                {
+                    return Err(GrammarError::Invalid("maxItems < minItems".into()));
+                }
+                // Bound the repetition structurally when limits are given —
+                // unbounded loops are where small models spiral until the
+                // token cap truncates mid-structure.
+                let body = if min == 0 {
+                    let inner_max = max.map(|m| m.saturating_sub(1));
+                    if max == Some(0) {
+                        String::new()
+                    } else {
+                        format!(
+                            r#"( {item_rule} ( "," space {item_rule} ){} )? "#,
+                            repetition(0, inner_max)
+                        )
+                    }
+                } else {
+                    format!(
+                        r#"{item_rule} ( "," space {item_rule} ){} "#,
+                        repetition(min - 1, max.map(|m| m - 1))
+                    )
+                };
+                Ok(format!(r#""[" space {body}"]" space"#))
             }
             "object" => {
                 let props = obj
@@ -208,6 +249,16 @@ fn sanitize(key: &str) -> String {
         .collect()
 }
 
+/// GBNF repetition suffix for {min,max}: `*` when unbounded from zero,
+/// `{n,}` / `{n,m}` otherwise (llama.cpp supports bounded repetition).
+fn repetition(min: u64, max: Option<u64>) -> String {
+    match (min, max) {
+        (0, None) => "*".to_string(),
+        (n, None) => format!("{{{n},}}"),
+        (n, Some(m)) => format!("{{{n},{m}}}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +324,60 @@ mod tests {
         });
         let g = json_schema_to_gbnf(&schema).unwrap();
         assert!(g.contains("root-author ::="), "grammar: {g}");
+    }
+
+    #[test]
+    fn bounded_array_emits_finite_repetition() {
+        let schema = json!({
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 12
+        });
+        let g = json_schema_to_gbnf(&schema).unwrap();
+        assert!(g.contains("{0,11}"), "grammar: {g}");
+        assert!(
+            !g.contains(r#"( "," space string )*"#),
+            "unbounded item loop left in grammar: {g}"
+        );
+    }
+
+    #[test]
+    fn bounded_string_emits_char_repetition() {
+        let schema = json!({ "type": "string", "maxLength": 80 });
+        let g = json_schema_to_gbnf(&schema).unwrap();
+        assert!(g.contains("string-char"), "grammar: {g}");
+        assert!(g.contains("{0,80}"), "grammar: {g}");
+    }
+
+    #[test]
+    #[ignore = "debug helper: cargo test -p liblisa dump_ -- --ignored --nocapture"]
+    fn dump_harness_grammar() {
+        let schema = json!({
+            "type":"object",
+            "properties":{
+                "title":{"type":"string","maxLength":80},
+                "servings":{"type":"integer"},
+                "vegetarian":{"type":"boolean"},
+                "ingredients":{"type":"array","items":{"type":"string","maxLength":60},"minItems":1,"maxItems":12}
+            },
+            "required":["title","servings","vegetarian","ingredients"]
+        });
+        println!("{}", json_schema_to_gbnf(&schema).unwrap());
+    }
+
+    #[test]
+    fn max_items_below_min_items_is_invalid() {
+        let schema = json!({
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 3,
+            "maxItems": 1
+        });
+        assert!(matches!(
+            json_schema_to_gbnf(&schema),
+            Err(GrammarError::Invalid(_))
+        ));
     }
 
     #[test]
