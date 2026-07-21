@@ -235,7 +235,7 @@ fn embed(text: Vec<String>, url: &str) -> anyhow::Result<()> {
     }
     let endpoint = format!("{}/v1/embeddings", url.trim_end_matches('/'));
     let mut response = ureq::post(&endpoint)
-        .send_json(&serde_json::json!({ "input": text }))
+        .send_json(serde_json::json!({ "input": text }))
         .with_context(|| format!("request to {endpoint} failed — is lisa-inferenced running?"))?;
     let json: serde_json::Value = response.body_mut().read_json()?;
     if let Some(err) = json["error"]["message"].as_str() {
