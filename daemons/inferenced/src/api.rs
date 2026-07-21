@@ -81,14 +81,16 @@ async fn chat_completions(
     };
 
     let priority = Priority::parse(req.lisa_priority.as_deref());
-    let stream = state.engine.generate(GenerateRequest {
+    let guided = grammar.is_some();
+    let gen_req = GenerateRequest {
         messages: req.messages,
         grammar,
         max_tokens: req.max_tokens,
-    });
-    let stream = state.scheduler.admit(priority, stream).await;
+    };
 
     if req.stream {
+        let stream = state.engine.generate(gen_req);
+        let stream = state.scheduler.admit(priority, stream).await;
         let chunk_id = id.clone();
         let chunk_model = model.clone();
         let sse = async_stream::stream! {
@@ -143,20 +145,38 @@ async fn chat_completions(
             .into_response();
     }
 
-    // Non-streaming: aggregate the token stream.
-    let tokens: Vec<Result<String, _>> = stream.collect().await;
+    // Non-streaming: aggregate the token stream. Guided requests get one
+    // server-side re-sample if the output isn't valid JSON (a truncated
+    // constrained generation must not reach the caller — structured
+    // output is the contract, §5.1/§5.6).
+    let attempts = if guided { 2 } else { 1 };
     let mut content = String::new();
-    for t in tokens {
-        match t {
-            Ok(tok) => content.push_str(&tok),
-            Err(e) => {
-                return (
-                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                    Json(serde_json::json!({"error": {"message": e.to_string()}})),
-                )
-                    .into_response();
+    for attempt in 0..attempts {
+        let stream = state.engine.generate(gen_req.clone());
+        let stream = state.scheduler.admit(priority, stream).await;
+        let tokens: Vec<Result<String, _>> = stream.collect().await;
+        content.clear();
+        let mut failed = None;
+        for t in tokens {
+            match t {
+                Ok(tok) => content.push_str(&tok),
+                Err(e) => {
+                    failed = Some(e);
+                    break;
+                }
             }
         }
+        if let Some(e) = failed {
+            return (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": {"message": e.to_string()}})),
+            )
+                .into_response();
+        }
+        if !guided || serde_json::from_str::<serde_json::Value>(&content).is_ok() {
+            break;
+        }
+        tracing::warn!(attempt, "guided output was not valid JSON; re-sampling");
     }
     let completion_tokens = content.split_whitespace().count() as u32;
     Json(ChatCompletionResponse {

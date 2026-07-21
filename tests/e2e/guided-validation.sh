@@ -38,7 +38,7 @@ print(r['choices'][0]['message']['content'])
   if ! python3 -c "
 import json, sys
 d = json.loads(sys.argv[1])
-assert isinstance(d['title'], str) and d['title']
+assert isinstance(d['title'], str) and len(d['title']) <= 80
 assert isinstance(d['servings'], int) and not isinstance(d['servings'], bool)
 assert isinstance(d['vegetarian'], bool)
 assert isinstance(d['ingredients'], list) and d['ingredients']
