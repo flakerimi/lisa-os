@@ -66,15 +66,15 @@ jobs:
       - uses: actions/checkout@v5
       - name: Start Arch container with systemd
         run: |
-          podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
+          sudo podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
             docker.io/library/archlinux:latest /usr/lib/systemd/systemd
           # Bounded wait for PID1 to answer; --wait can hang forever if a
           # unit never settles in the container.
-          timeout 60 podman exec lisa-e2e bash -c \
+          timeout 60 sudo podman exec lisa-e2e bash -c \
             'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 1; done' \
-            || echo "systemd state: $(podman exec lisa-e2e systemctl is-system-running || true) — proceeding"
+            || echo "systemd state: $(sudo podman exec lisa-e2e systemctl is-system-running || true) — proceeding"
       - name: Run layer e2e
-        run: podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
+        run: sudo podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
       - name: Cleanup
         if: always()
-        run: podman rm -f lisa-e2e
+        run: sudo podman rm -f lisa-e2e
