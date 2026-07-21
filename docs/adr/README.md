@@ -35,3 +35,4 @@ What gets easier, what gets harder, what we gave up.
 - [ADR-0003](0003-two-track-delivery.md) — Two-track delivery: Lisa Layer, then image
 - [ADR-0004](0004-flutter-lane-forge.md) — Flutter app lane + the Forge
 - [ADR-0005](0005-gpl2-license.md) — License: GPL-2.0-only, same as the kernel
+- [ADR-0006](0006-monorepo-staged-extraction.md) — Monorepo with staged extraction (split triggers, not dates)

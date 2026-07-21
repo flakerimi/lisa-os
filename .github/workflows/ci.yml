@@ -9,8 +9,43 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Per-job path filtering (ADR-0006): docs-only commits skip the heavy
+  # jobs; the layer e2e additionally reacts to os/** changes.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      layer: ${{ steps.filter.outputs.layer }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'libs/**'
+              - 'daemons/**'
+              - 'cli/**'
+              - 'models/**'
+              - 'tests/e2e/**'
+              - '.github/workflows/ci.yml'
+            layer:
+              - 'os/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'libs/**'
+              - 'daemons/**'
+              - 'cli/**'
+              - 'models/**'
+              - 'tests/e2e/**'
+              - '.github/workflows/ci.yml'
+
   lint:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -22,6 +57,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -32,6 +69,8 @@ jobs:
   # against the OpenAI-compat endpoint.
   openai-compat:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -51,6 +90,8 @@ jobs:
   # serves loopback under its unit sandbox while outbound is blocked.
   egress:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -63,6 +104,8 @@ jobs:
   layer-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    needs: changes
+    if: needs.changes.outputs.layer == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Start Arch container with systemd
