@@ -62,6 +62,7 @@ jobs:
   # cleanly on vanilla Arch (systemd container; Omarchy VM lands later).
   layer-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - name: Start Arch container with systemd
@@ -73,8 +74,20 @@ jobs:
           timeout 60 sudo podman exec lisa-e2e bash -c \
             'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 1; done' \
             || echo "systemd state: $(sudo podman exec lisa-e2e systemctl is-system-running || true) — proceeding"
+          # Diagnose stalled transactions up front: every PID1 D-Bus op on
+          # runners has shown ~90 s stalls (default job timeout) — surface
+          # which unit/job is wedged.
+          sudo podman exec lisa-e2e systemctl list-jobs --no-pager || true
+          sudo podman exec lisa-e2e systemctl list-units --failed --no-pager || true
       - name: Run layer e2e
         run: sudo podman exec lisa-e2e bash /src/tests/e2e/layer-test.sh
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          sudo podman exec lisa-e2e systemctl list-jobs --no-pager || true
+          sudo podman exec lisa-e2e systemctl list-units --failed --no-pager || true
+          sudo podman exec lisa-e2e systemctl status lisa-inferenced.service --no-pager -l || true
+          sudo podman exec lisa-e2e journalctl --no-pager -n 100 || true
       - name: Cleanup
         if: always()
         run: sudo podman rm -f lisa-e2e
