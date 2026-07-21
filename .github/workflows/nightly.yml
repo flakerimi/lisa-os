@@ -198,20 +198,38 @@ jobs:
           EOF
 
           echo 1 | sudo tee mnt-root/etc/lisa-slot-version >/dev/null
-          sudo tee mnt-root/usr/local/bin/lisa-demo-v1.sh >/dev/null <<'EOF'
+          # One driver for both slots, branching on the version marker —
+          # so the v2 root stays a byte-copy of v1 except that marker.
+          # (systemd.run= is container-only; a real enabled unit is the
+          # way to script a VM boot.)
+          sudo tee mnt-root/usr/local/bin/lisa-demo.sh >/dev/null <<'EOF'
           #!/bin/bash
-          set -x
-          echo "LISA_SLOT_BOOTED=$(cat /etc/lisa-slot-version)" > /dev/console
-          systemctl start systemd-networkd
-          for _ in $(seq 1 60); do (echo > /dev/tcp/10.0.2.2/8000) 2>/dev/null && break; sleep 1; done
-          /usr/lib/systemd/systemd-sysupdate update 2>&1 | tail -5 > /dev/console
-          echo "LISA_UPDATE_DONE" > /dev/console
+          v=$(cat /etc/lisa-slot-version)
+          echo "LISA_SLOT_BOOTED=$v" > /dev/console
+          if [ "$v" = "1" ]; then
+              systemctl start systemd-networkd
+              for _ in $(seq 1 60); do (echo > /dev/tcp/10.0.2.2/8000) 2>/dev/null && break; sleep 1; done
+              /usr/lib/systemd/systemd-sysupdate update 2>&1 | tail -5 > /dev/console
+              echo "LISA_UPDATE_DONE" > /dev/console
+              systemctl reboot
+          else
+              systemctl poweroff
+          fi
           EOF
-          sudo tee mnt-root/usr/local/bin/lisa-demo-v2.sh >/dev/null <<'EOF'
-          #!/bin/bash
-          echo "LISA_SLOT_BOOTED=$(cat /etc/lisa-slot-version)" > /dev/console
+          sudo chmod +x mnt-root/usr/local/bin/lisa-demo.sh
+          sudo tee mnt-root/etc/systemd/system/lisa-demo.service >/dev/null <<'EOF'
+          [Unit]
+          Description=Lisa A/B sysupdate demo driver
+          After=multi-user.target
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/lisa-demo.sh
           EOF
-          sudo chmod +x mnt-root/usr/local/bin/lisa-demo-v1.sh mnt-root/usr/local/bin/lisa-demo-v2.sh
+          sudo mkdir -p mnt-root/etc/systemd/system/multi-user.target.wants
+          sudo ln -sf ../lisa-demo.service mnt-root/etc/systemd/system/multi-user.target.wants/lisa-demo.service
+          # systemd-firstboot prompts interactively on first boot and
+          # blocks the console; the demo has no user.
+          sudo ln -sf /dev/null mnt-root/etc/systemd/system/systemd-firstboot.service
 
           # Demo UKIs from the shipped kernel+initrd: v1 runs the update
           # then reboots; v2 boots the B slot and powers off.
@@ -219,10 +237,10 @@ jobs:
           objcopy --dump-section .linux=vmlinuz --dump-section .initrd=initrd.img "mnt-esp/EFI/Linux/$NAME" discard.efi
           UKIFY=$(command -v ukify || echo /usr/lib/systemd/ukify)
           "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
-            --cmdline='root=/dev/vda2 rw console=ttyS0 systemd.run=/usr/local/bin/lisa-demo-v1.sh systemd.run_success_action=reboot' \
+            --cmdline='root=/dev/vda2 rw console=ttyS0' \
             --output=lisa_1.efi
           "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
-            --cmdline='root=/dev/vda3 rw console=ttyS0 systemd.run=/usr/local/bin/lisa-demo-v2.sh systemd.run_success_action=poweroff' \
+            --cmdline='root=/dev/vda3 rw console=ttyS0' \
             --output=lisa_2.efi
           sudo rm "mnt-esp/EFI/Linux/$NAME"
           sudo cp lisa_1.efi mnt-esp/EFI/Linux/lisa_1.efi
