@@ -47,6 +47,8 @@ pub struct LlamaConfig {
     pub port: u16,
     /// Extra llama-server arguments (e.g. ["-ngl", "99"] for GPU offload).
     pub extra_args: Vec<String>,
+    /// Resident-model cap: children beyond this are LRU-evicted (§5.1).
+    pub max_resident: usize,
 }
 
 impl Default for LlamaConfig {
@@ -56,6 +58,7 @@ impl Default for LlamaConfig {
             model_path: None,
             port: 7778,
             extra_args: Vec::new(),
+            max_resident: 2,
         }
     }
 }

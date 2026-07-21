@@ -33,6 +33,10 @@ pub trait Engine: Send + Sync {
     fn generate(&self, req: GenerateRequest) -> TokenStream;
     /// Embed texts into vectors (§5.1 `Session.Embed` / /v1/embeddings).
     fn embed(&self, texts: Vec<String>) -> BoxFuture<'static, Result<Vec<Vec<f32>>, EngineError>>;
+    /// Release resources (kill children). Pool eviction calls this.
+    fn shutdown(&self) -> BoxFuture<'static, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// Deterministic echo engine: proves the full plumbing (HTTP, SSE, CLI)

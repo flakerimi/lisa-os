@@ -16,8 +16,12 @@ fn test_state() -> (tempfile::TempDir, api::AppState) {
     (
         dir,
         api::AppState {
-            engine: Arc::new(engine::StubEngine),
+            engines: Arc::new(lisa_inferenced::pool::SingleEngine {
+                engine: Arc::new(engine::StubEngine),
+                name: "lisa-system-stub".to_string(),
+            }),
             scheduler: Arc::new(scheduler::Scheduler::new(1)),
+            engine_kind: "stub".to_string(),
             model_name: "lisa-system-stub".to_string(),
             ledger: Arc::new(ledger),
         },

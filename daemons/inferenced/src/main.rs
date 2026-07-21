@@ -5,7 +5,8 @@
 
 use clap::Parser;
 use lisa_inferenced::config::{self, Config, EngineKind};
-use lisa_inferenced::engine::{Engine, StubEngine};
+use lisa_inferenced::engine::StubEngine;
+use lisa_inferenced::pool::{EngineProvider, ModelPool, SingleEngine};
 use lisa_inferenced::{api, dbus, llama};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,23 +56,49 @@ async fn main() -> anyhow::Result<()> {
         None => {}
     }
 
-    let engine: Arc<dyn Engine> = match cfg.engine {
-        EngineKind::Stub => Arc::new(StubEngine),
+    let model_name_for = |p: &std::path::Path| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "lisa-system".to_string())
+    };
+    let engines: Arc<dyn EngineProvider> = match cfg.engine {
+        EngineKind::Stub => Arc::new(SingleEngine {
+            engine: Arc::new(StubEngine),
+            name: "lisa-system-stub".to_string(),
+        }),
         EngineKind::Llama => {
-            let llama = llama::LlamaEngine::new(cfg.llama.clone());
-            if let Err(e) = llama.ensure_running().await {
-                warn!("llama-server unavailable ({e}); requests will fail until M1 wiring");
-            }
-            Arc::new(llama)
+            let model_path = cfg.llama.model_path.clone().ok_or_else(|| {
+                anyhow::anyhow!("engine llama requires --model or llama.model_path")
+            })?;
+            let refs_dir = model_path
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_default();
+            let default_model = model_name_for(&model_path);
+            let base = cfg.llama.clone();
+            // One supervised llama-server child per resident model,
+            // lazily spawned, LRU-evicted beyond max_resident (§5.1).
+            Arc::new(ModelPool::new(
+                default_model,
+                refs_dir,
+                base.port,
+                base.max_resident,
+                Box::new(move |_name, path, port| {
+                    let mut child_cfg = base.clone();
+                    child_cfg.model_path = Some(path);
+                    child_cfg.port = port;
+                    Ok(Arc::new(llama::LlamaEngine::new(child_cfg)))
+                }),
+            ))
         }
     };
-    info!(engine = engine.name(), "engine initialized");
+    info!("engine provider initialized");
 
     let scheduler = Arc::new(lisa_inferenced::scheduler::Scheduler::new(1));
 
     // D-Bus is opt-in until the portal lands; never fatal.
     let _dbus_conn = if cfg.dbus {
-        match dbus::serve(Arc::clone(&engine), Arc::clone(&scheduler)).await {
+        match dbus::serve(Arc::clone(&engines), Arc::clone(&scheduler)).await {
             Ok(conn) => {
                 info!("org.lisa.Inference1 registered on the session bus");
                 Some(conn)
@@ -91,9 +118,12 @@ async fn main() -> anyhow::Result<()> {
             .llama
             .model_path
             .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
+            .map(|p| model_name_for(p))
             .unwrap_or_else(|| "lisa-system".to_string()),
+    };
+    let engine_kind = match cfg.engine {
+        EngineKind::Stub => "stub".to_string(),
+        EngineKind::Llama => "llama".to_string(),
     };
     // No ledger, no inference (PLAN §4 rule 4): refuse to serve at all
     // if the audit log cannot be opened.
@@ -105,8 +135,9 @@ async fn main() -> anyhow::Result<()> {
     info!(ledger = %ledger_path.display(), "ledger open (append-only)");
 
     let state = api::AppState {
-        engine,
+        engines,
         scheduler,
+        engine_kind,
         model_name,
         ledger: Arc::new(ledger),
     };

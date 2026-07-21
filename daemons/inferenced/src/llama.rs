@@ -153,6 +153,15 @@ impl Engine for LlamaEngine {
         "llama"
     }
 
+    fn shutdown(&self) -> futures::future::BoxFuture<'static, ()> {
+        let inner = Arc::clone(&self.inner);
+        Box::pin(async move {
+            if let Some(mut child) = inner.child.lock().await.take() {
+                let _ = child.kill().await;
+            }
+        })
+    }
+
     fn embed(
         &self,
         texts: Vec<String>,

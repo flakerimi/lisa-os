@@ -22,7 +22,13 @@ async fn p2p_pair() -> (zbus::Connection, zbus::Connection) {
         .p2p()
         .serve_at(
             "/org/lisa/Inference1",
-            Inference1::new(Arc::new(StubEngine), Arc::new(Scheduler::new(1))),
+            Inference1::new(
+                Arc::new(lisa_inferenced::pool::SingleEngine {
+                    engine: Arc::new(StubEngine),
+                    name: "lisa-system-stub".to_string(),
+                }),
+                Arc::new(Scheduler::new(1)),
+            ),
         )
         .unwrap()
         .build();

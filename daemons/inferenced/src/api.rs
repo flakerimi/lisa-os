@@ -3,8 +3,9 @@
 //! attaches here (M2); guided generation (JSON Schema → GBNF via
 //! `liblisa::grammar`) is threaded through to the engine in M1.
 
-use crate::engine::{Engine, GenerateRequest};
+use crate::engine::GenerateRequest;
 use crate::openai::*;
+use crate::pool::EngineProvider;
 use crate::scheduler::{Priority, Scheduler};
 use axum::Router;
 use axum::extract::State;
@@ -17,10 +18,20 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub engine: Arc<dyn Engine>,
+    pub engines: Arc<dyn EngineProvider>,
     pub scheduler: Arc<Scheduler>,
+    /// Reported by /health; "stub" or "llama".
+    pub engine_kind: String,
     pub model_name: String,
     pub ledger: Arc<Ledger>,
+}
+
+fn engine_error_response(e: crate::engine::EngineError) -> Response {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"error": {"message": e.to_string()}})),
+    )
+        .into_response()
 }
 
 /// Dataflow rule 4 (PLAN §4): the ledger entry precedes the action —
@@ -83,7 +94,11 @@ async fn embeddings(State(state): State<AppState>, Json(req): Json<serde_json::V
         Ok(id) => id,
         Err(resp) => return *resp,
     };
-    match state.engine.embed(texts).await {
+    let engine = match state.engines.engine_for(req["model"].as_str()).await {
+        Ok(e) => e,
+        Err(e) => return engine_error_response(e),
+    };
+    match engine.embed(texts).await {
         Ok(vectors) => {
             let _ = state.ledger.append(&LedgerEvent {
                 kind: "inference.complete".into(),
@@ -129,7 +144,7 @@ async fn embeddings(State(state): State<AppState>, Json(req): Json<serde_json::V
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
-        "engine": state.engine.name(),
+        "engine": state.engine_kind,
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
@@ -137,12 +152,17 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
 async fn models(State(state): State<AppState>) -> Json<ModelList> {
     Json(ModelList {
         object: "list",
-        data: vec![ModelInfo {
-            id: state.model_name.clone(),
-            object: "model",
-            created: unix_now(),
-            owned_by: "lisa",
-        }],
+        data: state
+            .engines
+            .known_models()
+            .into_iter()
+            .map(|id| ModelInfo {
+                id,
+                object: "model",
+                created: unix_now(),
+                owned_by: "lisa",
+            })
+            .collect(),
     })
 }
 
@@ -213,8 +233,13 @@ async fn chat_completions(
         Err(resp) => return *resp,
     };
 
+    let engine = match state.engines.engine_for(req.model.as_deref()).await {
+        Ok(e) => e,
+        Err(e) => return engine_error_response(e),
+    };
+
     if req.stream {
-        let stream = state.engine.generate(gen_req);
+        let stream = engine.generate(gen_req);
         let stream = state.scheduler.admit(priority, stream).await;
         let chunk_id = id.clone();
         let chunk_model = model.clone();
@@ -298,7 +323,7 @@ async fn chat_completions(
     let attempts = if guided { 2 } else { 1 };
     let mut content = String::new();
     for attempt in 0..attempts {
-        let stream = state.engine.generate(gen_req.clone());
+        let stream = engine.generate(gen_req.clone());
         let stream = state.scheduler.admit(priority, stream).await;
         let tokens: Vec<Result<String, _>> = stream.collect().await;
         content.clear();

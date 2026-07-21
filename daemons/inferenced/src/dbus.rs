@@ -12,6 +12,7 @@
 
 use crate::engine::{Engine, GenerateRequest};
 use crate::openai::ChatMessage;
+use crate::pool::EngineProvider;
 use crate::scheduler::{Priority, Scheduler};
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -23,15 +24,15 @@ use zbus::object_server::ObjectServer;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 pub struct Inference1 {
-    pub engine: Arc<dyn Engine>,
+    pub engines: Arc<dyn EngineProvider>,
     pub scheduler: Arc<Scheduler>,
     next_session: AtomicU64,
 }
 
 impl Inference1 {
-    pub fn new(engine: Arc<dyn Engine>, scheduler: Arc<Scheduler>) -> Self {
+    pub fn new(engines: Arc<dyn EngineProvider>, scheduler: Arc<Scheduler>) -> Self {
         Self {
-            engine,
+            engines,
             scheduler,
             next_session: AtomicU64::new(1),
         }
@@ -46,13 +47,21 @@ impl Inference1 {
     }
 
     /// Open a session. Returns the session object path and the read end
-    /// of the token pipe. Options (a{sv}) are reserved for model_hint,
-    /// memory_ns, and scopes (M2 portal wiring).
+    /// of the token pipe. Options: "model_hint" (s) selects a resident
+    /// model; memory_ns and scopes arrive with the portal (M2).
     async fn open_session(
         &self,
-        _options: HashMap<String, OwnedValue>,
+        options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> zbus::fdo::Result<(OwnedObjectPath, zbus::zvariant::OwnedFd)> {
+        let model_hint: Option<String> = options
+            .get("model_hint")
+            .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_string));
+        let engine = self
+            .engines
+            .engine_for(model_hint.as_deref())
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
         let id = self.next_session.fetch_add(1, Ordering::Relaxed);
         let path = OwnedObjectPath::try_from(format!("/org/lisa/Inference1/session/{id}"))
             .expect("session path is valid");
@@ -63,7 +72,7 @@ impl Inference1 {
             .map_err(|e| zbus::fdo::Error::Failed(format!("pipe writer: {e}")))?;
 
         let session = Session {
-            engine: Arc::clone(&self.engine),
+            engine,
             scheduler: Arc::clone(&self.scheduler),
             writer: Arc::new(Mutex::new(Some(writer))),
             task: Arc::new(Mutex::new(None)),
@@ -187,12 +196,12 @@ impl Session {
 
 /// Register on the session bus (real systems; tests use p2p connections).
 pub async fn serve(
-    engine: Arc<dyn Engine>,
+    engines: Arc<dyn EngineProvider>,
     scheduler: Arc<Scheduler>,
 ) -> zbus::Result<zbus::Connection> {
     zbus::connection::Builder::session()?
         .name("org.lisa.Inference1")?
-        .serve_at("/org/lisa/Inference1", Inference1::new(engine, scheduler))?
+        .serve_at("/org/lisa/Inference1", Inference1::new(engines, scheduler))?
         .build()
         .await
 }
