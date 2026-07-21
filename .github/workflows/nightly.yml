@@ -44,7 +44,7 @@ jobs:
           timeout 600 qemu-system-x86_64 \
             -machine q35 -accel kvm -accel tcg -m 4G -nographic -no-reboot \
             -kernel os/mkosi/lisa.vmlinuz -initrd os/mkosi/lisa.initrd \
-            -append "console=ttyS0 systemd.unit=poweroff.target systemd.show_status=1" \
+            -append "root=/dev/vda2 rw console=ttyS0 systemd.unit=poweroff.target systemd.show_status=1" \
             -drive file=os/mkosi/lisa.raw,format=raw,if=virtio \
             | tee boot-console.log
           grep -q "Welcome to" boot-console.log
