@@ -131,3 +131,141 @@ jobs:
           mdir -b -i "$ESP" ::/EFI/Linux/ | tee esp-after.txt
           grep -q 'lisa-99+0-2.efi' esp-after.txt
           echo "ROLLBACK DEMO: PASS (2 failed tries, counters exhausted to +0-2, good entry booted and powered off)"
+
+  # M0 acceptance (PLAN §10, ADR-0001): the update half of A/B. Boot v1,
+  # let systemd-sysupdate pull a v2 (root partition image + UKI) over
+  # HTTP from the runner, install it into the _empty slot, reboot, and
+  # boot v2 from that slot. Asserted from the console sequence AND the
+  # disk's state afterwards (slot relabeled root_2, lisa_2.efi in ESP).
+  ab-sysupdate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: image
+    steps:
+      - name: Download built image
+        uses: actions/download-artifact@v4
+        with:
+          name: lisa-image
+      - name: Plant sysupdate config + demo scripts (loop mounts)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y --no-install-recommends \
+            fdisk jq binutils systemd-ukify systemd-boot-efi xz-utils >/dev/null
+          LOOP=$(sudo losetup -P --show -f lisa.raw)
+          echo "LOOP=$LOOP" >>"$GITHUB_ENV"
+          mkdir -p mnt-root mnt-esp
+          sudo mount "${LOOP}p2" mnt-root
+          sudo mount "${LOOP}p1" mnt-esp
+
+          # sysupdate transfers: root partition images by slot label,
+          # UKIs by ESP filename. Verify=no: the M1 hosted repo signs.
+          sudo mkdir -p mnt-root/etc/sysupdate.d mnt-root/efi
+          sudo tee mnt-root/etc/sysupdate.d/50-root.conf >/dev/null <<'EOF'
+          [Transfer]
+          Verify=no
+          [Source]
+          Type=url-file
+          Path=http://10.0.2.2:8000/
+          MatchPattern=lisa_@v.root.xz
+          [Target]
+          Type=partition
+          Path=auto
+          MatchPattern=root_@v
+          MatchPartitionType=root
+          InstancesMax=2
+          EOF
+          sudo tee mnt-root/etc/sysupdate.d/60-uki.conf >/dev/null <<'EOF'
+          [Transfer]
+          Verify=no
+          [Source]
+          Type=url-file
+          Path=http://10.0.2.2:8000/
+          MatchPattern=lisa_@v.efi
+          [Target]
+          Type=regular-file
+          Path=/EFI/Linux
+          PathRelativeTo=esp
+          MatchPattern=lisa_@v.efi
+          InstancesMax=2
+          EOF
+
+          # QEMU user-net DHCP so the guest can reach the runner (10.0.2.2).
+          sudo tee mnt-root/etc/systemd/network/99-demo-dhcp.network >/dev/null <<'EOF'
+          [Match]
+          Name=en*
+          [Network]
+          DHCP=yes
+          EOF
+
+          echo 1 | sudo tee mnt-root/etc/lisa-slot-version >/dev/null
+          sudo tee mnt-root/usr/local/bin/lisa-demo-v1.sh >/dev/null <<'EOF'
+          #!/bin/bash
+          set -x
+          echo "LISA_SLOT_BOOTED=$(cat /etc/lisa-slot-version)" > /dev/console
+          systemctl start systemd-networkd
+          for _ in $(seq 1 60); do (echo > /dev/tcp/10.0.2.2/8000) 2>/dev/null && break; sleep 1; done
+          /usr/lib/systemd/systemd-sysupdate update 2>&1 | tail -5 > /dev/console
+          echo "LISA_UPDATE_DONE" > /dev/console
+          EOF
+          sudo tee mnt-root/usr/local/bin/lisa-demo-v2.sh >/dev/null <<'EOF'
+          #!/bin/bash
+          echo "LISA_SLOT_BOOTED=$(cat /etc/lisa-slot-version)" > /dev/console
+          EOF
+          sudo chmod +x mnt-root/usr/local/bin/lisa-demo-v1.sh mnt-root/usr/local/bin/lisa-demo-v2.sh
+
+          # Demo UKIs from the shipped kernel+initrd: v1 runs the update
+          # then reboots; v2 boots the B slot and powers off.
+          NAME=$(ls mnt-esp/EFI/Linux/ | grep '^lisa-.*\.efi$' | head -1)
+          objcopy --dump-section .linux=vmlinuz --dump-section .initrd=initrd.img "mnt-esp/EFI/Linux/$NAME" discard.efi
+          UKIFY=$(command -v ukify || echo /usr/lib/systemd/ukify)
+          "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
+            --cmdline='root=/dev/vda2 rw console=ttyS0 systemd.run=/usr/local/bin/lisa-demo-v1.sh systemd.run_success_action=reboot' \
+            --output=lisa_1.efi
+          "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
+            --cmdline='root=/dev/vda3 rw console=ttyS0 systemd.run=/usr/local/bin/lisa-demo-v2.sh systemd.run_success_action=poweroff' \
+            --output=lisa_2.efi
+          sudo rm "mnt-esp/EFI/Linux/$NAME"
+          sudo cp lisa_1.efi mnt-esp/EFI/Linux/lisa_1.efi
+
+          sudo umount mnt-esp mnt-root
+
+          # v2 root = byte-copy of slot A with a bumped version marker.
+          sudo dd if="${LOOP}p2" of=root2.img bs=4M status=none
+          sudo chown "$USER:" root2.img
+          mkdir -p mnt-v2
+          sudo mount -o loop root2.img mnt-v2
+          echo 2 | sudo tee mnt-v2/etc/lisa-slot-version >/dev/null
+          sudo umount mnt-v2
+          xz -T0 -1 root2.img
+          mkdir -p serve
+          mv root2.img.xz serve/lisa_2.root.xz
+          cp lisa_2.efi serve/
+          sudo losetup -d "$LOOP"
+          ls -lh serve/
+      - name: Update + reboot into slot B (UEFI QEMU)
+        run: |
+          set -o pipefail
+          sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 ovmf >/dev/null
+          (cd serve && python3 -m http.server 8000 >/dev/null 2>&1 &)
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+          timeout 900 qemu-system-x86_64 \
+            -machine q35 -accel kvm -accel tcg -m 4G -nographic \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=lisa.raw,format=raw,if=virtio \
+            | tee console.log
+          echo "--- assertions"
+          V1=$(grep -n "LISA_SLOT_BOOTED=1" console.log | head -1 | cut -d: -f1)
+          DONE=$(grep -n "LISA_UPDATE_DONE" console.log | head -1 | cut -d: -f1)
+          V2=$(grep -n "LISA_SLOT_BOOTED=2" console.log | head -1 | cut -d: -f1)
+          [ -n "$V1" ] && [ -n "$DONE" ] && [ -n "$V2" ]
+          [ "$V1" -lt "$DONE" ] && [ "$DONE" -lt "$V2" ]
+          grep -q "reboot: Power down" console.log
+          # Disk state: the empty slot is now labeled root_2 and the ESP
+          # carries the v2 UKI.
+          sfdisk -J lisa.raw | jq -r '.partitiontable.partitions[].name' | tee labels.txt
+          grep -qx "root_2" labels.txt
+          OFF=$(( $(sfdisk -J lisa.raw | jq -r '.partitiontable.partitions[0].start') * 512 ))
+          sudo apt-get install -qq -y mtools >/dev/null
+          mdir -b -i "lisa.raw@@$OFF" ::/EFI/Linux/ | grep -q 'lisa_2.efi'
+          echo "SYSUPDATE DEMO: PASS (v1 booted, update installed to slot B, v2 booted from root_2)"
