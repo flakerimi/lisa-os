@@ -36,18 +36,28 @@ jobs:
       # poweroff.target: reaching poweroff exits QEMU cleanly; a hang is
       # caught by the timeout; "Welcome to" proves systemd came up from
       # the image's own initrd + root.
-      - name: Boot check (QEMU)
+      - name: Boot check (QEMU + swtpm)
         run: |
           set -o pipefail
           sudo apt-get update -qq
-          sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 >/dev/null
+          sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 swtpm >/dev/null
+          # Software TPM 2.0, as the e2e harness prescribes (PLAN §11) —
+          # TPM-backed disk encryption (systemd-cryptenroll) builds on this.
+          mkdir -p tpmstate
+          swtpm socket --tpmstate dir=tpmstate \
+            --ctrl type=unixio,path=tpm.sock --tpm2 --daemon
           timeout 600 qemu-system-x86_64 \
             -machine q35 -accel kvm -accel tcg -m 4G -nographic -no-reboot \
+            -chardev socket,id=chrtpm,path=tpm.sock \
+            -tpmdev emulator,id=tpm0,chardev=chrtpm \
+            -device tpm-tis,tpmdev=tpm0 \
             -kernel os/mkosi/lisa.vmlinuz -initrd os/mkosi/lisa.initrd \
             -append "root=/dev/vda2 rw console=ttyS0 systemd.unit=poweroff.target systemd.show_status=1" \
             -drive file=os/mkosi/lisa.raw,format=raw,if=virtio \
             | tee boot-console.log
           grep -q "Welcome to" boot-console.log
+          # The guest saw the emulated TPM.
+          grep -qi "tpm" boot-console.log
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
