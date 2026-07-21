@@ -209,9 +209,15 @@ jobs:
           if [ "$v" = "1" ]; then
               systemctl start systemd-networkd
               for _ in $(seq 1 60); do (echo > /dev/tcp/10.0.2.2/8000) 2>/dev/null && break; sleep 1; done
-              /usr/lib/systemd/systemd-sysupdate update 2>&1 | tail -5 > /dev/console
-              echo "LISA_UPDATE_DONE" > /dev/console
-              systemctl reboot
+              if /usr/lib/systemd/systemd-sysupdate update > /tmp/sysupdate.log 2>&1; then
+                  tail -5 /tmp/sysupdate.log > /dev/console
+                  echo "LISA_UPDATE_DONE" > /dev/console
+                  systemctl reboot
+              else
+                  tail -10 /tmp/sysupdate.log > /dev/console
+                  echo "LISA_UPDATE_FAILED" > /dev/console
+                  systemctl poweroff
+              fi
           else
               systemctl poweroff
           fi
@@ -258,11 +264,15 @@ jobs:
           mkdir -p serve
           mv root2.img.xz serve/lisa_2.root.xz
           cp lisa_2.efi serve/
+          # sysupdate enumerates available versions via the SHA256SUMS
+          # manifest even with Verify=no (that flag only skips GPG).
+          (cd serve && sha256sum lisa_2.root.xz lisa_2.efi > SHA256SUMS)
           sudo losetup -d "$LOOP"
           ls -lh serve/
       - name: Update + reboot into slot B (UEFI QEMU)
         run: |
           set -o pipefail
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm
           sudo apt-get install -qq -y --no-install-recommends qemu-system-x86 ovmf >/dev/null
           (cd serve && python3 -m http.server 8000 >/dev/null 2>&1 &)
           cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
