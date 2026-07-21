@@ -1,4 +1,4 @@
-# Maintainer: Lisa OS project <https://github.com/flakerimi/lisa-os>
+# Maintainer: Lisa OS project <https://github.com/Lisa-AgenticOS/lisa-os>
 # Split package for the Lisa Layer (Track L, ADR-0003). Built from a
 # git-archive tarball produced by os/repo-tools/build-packages.sh — the
 # checksum is SKIP because the tarball is generated locally from git HEAD;
@@ -10,7 +10,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="Lisa OS AI layer: local inference as a system service"
 arch=(x86_64 aarch64)
-url="https://github.com/flakerimi/lisa-os"
+url="https://github.com/Lisa-AgenticOS/lisa-os"
 license=(GPL-2.0-only)
 makedepends=(cargo)
 # makepkg's default lto option injects -flto into ring's C objects, which

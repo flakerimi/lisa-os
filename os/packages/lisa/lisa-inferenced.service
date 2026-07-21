@@ -8,7 +8,7 @@
 
 [Unit]
 Description=Lisa OS model runtime & scheduler
-Documentation=https://github.com/flakerimi/lisa-os/blob/main/daemons/inferenced/README.md
+Documentation=https://github.com/Lisa-AgenticOS/lisa-os/blob/main/daemons/inferenced/README.md
 
 [Service]
 Type=exec

@@ -10,7 +10,7 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "GPL-2.0-only"
-repository = "https://github.com/flakerimi/lisa-os"
+repository = "https://github.com/Lisa-AgenticOS/lisa-os"
 
 [workspace.dependencies]
 liblisa = { path = "libs/liblisa" }
