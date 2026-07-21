@@ -67,7 +67,11 @@ jobs:
       - uses: actions/checkout@v5
       - name: Start Arch container with systemd
         run: |
-          sudo podman run -d --name lisa-e2e --systemd=always -v "$PWD":/src:ro \
+          # --privileged: the runner's default seccomp/AppArmor confinement
+          # kills dbus-broker's launcher child, crashlooping the system bus
+          # and wedging PID1 (throwaway CI container; the image job already
+          # runs privileged for the same reason).
+          sudo podman run -d --name lisa-e2e --privileged --systemd=always -v "$PWD":/src:ro \
             docker.io/library/archlinux:latest /usr/lib/systemd/systemd
           # systemd on runners can take several 90 s job-timeout cycles to
           # settle; require running|degraded before testing — piling work
