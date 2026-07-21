@@ -91,11 +91,13 @@ jobs:
           "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
             --cmdline='root=/dev/vda2 rw console=ttyS0 lisa_demo=good systemd.unit=poweroff.target' \
             --output=good-demo.efi
-          # Bad entry: version 99 outranks the good entry; nonexistent
-          # root forces an initrd timeout; rd.emergency=reboot turns the
-          # failure into a reboot so the +2 try counter decrements.
+          # Bad entry: version 99 outranks the good entry. It boots but
+          # immediately reboots (systemd.unit=reboot.target) without ever
+          # reaching boot-complete — a deterministic failed boot that
+          # burns a try per cycle. (A broken-root variant drops to an
+          # emergency shell and hangs instead of rebooting.)
           "$UKIFY" build --linux=vmlinuz --initrd=initrd.img \
-            --cmdline='root=PARTUUID=00000000-0000-0000-0000-000000000000 rw console=ttyS0 lisa_demo=bad rd.emergency=reboot panic=5' \
+            --cmdline='root=/dev/vda2 rw console=ttyS0 lisa_demo=bad systemd.unit=reboot.target' \
             --output=bad-demo.efi
           mcopy -o -i "$ESP" good-demo.efi "::/EFI/Linux/$NAME"
           mcopy -i "$ESP" bad-demo.efi "::/EFI/Linux/lisa-99+2.efi"
