@@ -84,7 +84,7 @@ jobs:
           mcopy -i "$ESP" "::/EFI/Linux/$NAME" good.efi
           # The mkosi UKI carries no .cmdline section, so rebuild demo
           # variants properly with ukify from its kernel + initrd.
-          objcopy --dump-section .linux=vmlinuz --dump-section .initrd=initrd.img good.efi /dev/null
+          objcopy --dump-section .linux=vmlinuz --dump-section .initrd=initrd.img good.efi discard.efi
           UKIFY=$(command -v ukify || echo /usr/lib/systemd/ukify)
           # Good entry: serial console + clean poweroff so QEMU exits on
           # success. No try counters = permanently valid entry.
