@@ -39,7 +39,8 @@ if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
     systemctl enable --now lisa-inferenced.service
     say ">> waiting for the inference endpoint"
-    for _ in $(seq 1 50); do
+    # LISA_HEALTH_TIMEOUT: seconds to wait (default 10; CI containers are slow).
+    for _ in $(seq 1 $((5 * ${LISA_HEALTH_TIMEOUT:-10}))); do
         curl -sf 127.0.0.1:7777/health >/dev/null 2>&1 && break
         sleep 0.2
     done

@@ -12,6 +12,12 @@ set -euo pipefail
 
 say() { printf '\n== %s\n' "$*"; }
 
+# systemd PID1 operations are extremely slow under rootless podman on CI
+# runners (~90 s per D-Bus op); the default 25 s client timeout aborts
+# otherwise-successful starts. Generous budgets, container-test only.
+export SYSTEMD_BUS_TIMEOUT=300
+export LISA_HEALTH_TIMEOUT=180
+
 say "provision build deps"
 # pacman >= 7's Landlock/alpm-user download sandbox cannot apply inside a
 # rootless container; disabling it is container-only (real hosts keep it).
