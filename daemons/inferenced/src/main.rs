@@ -92,7 +92,14 @@ async fn main() -> anyhow::Result<()> {
             ))
         }
     };
-    info!("engine provider initialized");
+    // Wrap the local provider so `remote:<provider>:<model>` names route
+    // to the lisa-remoted broker (§5.11); local models pass through
+    // unchanged. inferenced stays network-free — the broker owns egress.
+    let engines: Arc<dyn EngineProvider> = Arc::new(lisa_inferenced::remote::RemoteRouter::new(
+        engines,
+        lisa_inferenced::remote::default_socket(),
+    ));
+    info!("engine provider initialized (remote routing enabled)");
 
     let scheduler = Arc::new(lisa_inferenced::scheduler::Scheduler::new(1));
 

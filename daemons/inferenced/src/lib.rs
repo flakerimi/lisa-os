@@ -9,4 +9,5 @@ pub mod engine;
 pub mod llama;
 pub mod openai;
 pub mod pool;
+pub mod remote;
 pub mod scheduler;
