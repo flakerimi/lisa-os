@@ -3,7 +3,8 @@
 Lisa OS is an AI-native Linux distribution: local models as a system
 service, per-app durable context, MCP-native agent surfaces, and an
 append-only audit Ledger. **`docs/PLAN.md` is the source of truth** for
-architecture and scope; this file is the operating manual.
+architecture and scope; this file is the operating manual. **`docs/STATUS.md`**
+is the living "where are we" snapshot — read it first to catch up.
 
 ## Commands
 
