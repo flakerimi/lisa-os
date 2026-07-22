@@ -13,6 +13,7 @@
 //!   never reads another's namespace);
 //! - the store is one user-openable SQLite file.
 
+pub mod embed;
 pub mod index;
 pub mod memory;
 pub mod store;

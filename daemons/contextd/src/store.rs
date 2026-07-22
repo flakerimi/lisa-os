@@ -46,6 +46,17 @@ impl ContextStore {
                 value   TEXT NOT NULL,
                 updated INTEGER NOT NULL,
                 PRIMARY KEY (app_id, key)
+            );
+            -- Per-chunk embeddings for hybrid retrieval (§5.3). Stored as
+            -- little-endian f32 blobs; brute-force cosine over FTS5-
+            -- prefiltered candidates for now (sqlite-vec is the later
+            -- optimization). Keyed to a chunk's (doc_id, seq).
+            CREATE TABLE IF NOT EXISTS chunk_vectors (
+                doc_id INTEGER NOT NULL,
+                seq    INTEGER NOT NULL,
+                dim    INTEGER NOT NULL,
+                vec    BLOB NOT NULL,
+                PRIMARY KEY (doc_id, seq)
             );",
         )?;
         Ok(Self {

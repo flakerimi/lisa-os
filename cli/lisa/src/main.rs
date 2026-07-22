@@ -146,12 +146,20 @@ enum RemoteCmd {
 #[derive(Subcommand)]
 enum ContextCmd {
     /// Index text files under a directory (incremental).
-    Index { dir: PathBuf },
-    /// Search the index (FTS5; hybrid ranking arrives with embeddings).
+    Index {
+        dir: PathBuf,
+        /// Also embed chunks for hybrid (vector) search.
+        #[arg(long)]
+        embed: bool,
+    },
+    /// Search the index (lexical by default; --hybrid blends vectors).
     Search {
         query: Vec<String>,
         #[arg(long, default_value_t = 5)]
         limit: usize,
+        /// Blend BM25 with vector similarity (needs indexed embeddings).
+        #[arg(long)]
+        hybrid: bool,
     },
 }
 
@@ -571,25 +579,47 @@ fn context_store() -> anyhow::Result<lisa_contextd::ContextStore> {
 fn context_cmd(cmd: ContextCmd) -> anyhow::Result<()> {
     let store = context_store()?;
     match cmd {
-        ContextCmd::Index { dir } => {
+        ContextCmd::Index { dir, embed } => {
             let report = store.index_dir(&dir)?;
             println!(
                 "indexed {} file(s) ({} chunks), {} unchanged",
                 report.indexed, report.chunks, report.skipped_unchanged
             );
+            if embed {
+                let n = store.embed_pending(&lisa_contextd::embed::HashEmbedder::default())?;
+                println!("embedded {n} new chunk(s) for hybrid search");
+            }
         }
-        ContextCmd::Search { query, limit } => {
+        ContextCmd::Search {
+            query,
+            limit,
+            hybrid,
+        } => {
             let query = query.join(" ");
             // Every retrieval is ledgered (PLAN §5.3) — query hash, not text.
             let ledger = lisa_ledger::Ledger::open(lisa_ledger::Ledger::default_path())?;
             ledger.append(&lisa_ledger::Event {
-                kind: "context.search".into(),
+                kind: if hybrid {
+                    "context.search.hybrid"
+                } else {
+                    "context.search"
+                }
+                .into(),
                 app_id: "host".into(),
                 input_hash: blake3::hash(query.as_bytes()).to_hex().to_string(),
                 status: "ok".into(),
                 ..Default::default()
             })?;
-            for hit in store.search(&query, limit)? {
+            let hits = if hybrid {
+                store.search_hybrid(
+                    &query,
+                    &lisa_contextd::embed::HashEmbedder::default(),
+                    limit,
+                )?
+            } else {
+                store.search(&query, limit)?
+            };
+            for hit in hits {
                 println!(
                     "[{}] {}
     {}",
