@@ -8,8 +8,10 @@ members = [
     "daemons/modeld",
     "daemons/contextd",
     "daemons/remoted",
+    "daemons/agentd",
     "portals/xdg-desktop-portal-lisa",
     "cli/lisa",
+    "tests/injection-suite",
 ]
 
 [workspace.package]

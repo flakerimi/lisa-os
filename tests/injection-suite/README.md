@@ -1,7 +1,31 @@
 # tests/injection-suite — prompt-injection red team
 
-Spec: docs/PLAN.md §5.10, §5.4. Milestone: M5 gate.
+Spec: docs/PLAN.md §5.10, §5.4. Milestone: M5 gate. Design: ADR-0009.
 
-500+ seeded attacks (hostile strings in retrieved mail/files/screen content); merge-blocking gate: 0 unconfirmed privileged calls.
+The M5 gate: a hostile string embedded in retrieved mail/file/screen
+content results in **0 unconfirmed privileged calls** across 500+ seeded
+attempts. The assertion is two-layered:
 
-Status: **not started** — scaffold placeholder. Read the spec section (and CLAUDE.md rules) before writing code here.
+- **Bus layer (shipped, host-independent):** the corpus (hostile payload
+  × delivery vector × privileged target) is driven through a real
+  `lisa_agentd::bus::AgentBus` with a recording dispatcher. Every
+  attempt's trigger chain carries untrusted provenance, so every
+  privileged call must park for confirmation — the bus dispatches
+  nothing unconfirmed, whatever the payload claims. This is the
+  load-bearing guarantee (enforced by the bus, not app goodwill) and it
+  runs on macOS and Linux with no model and no desktop. See
+  `tests/gate.rs`.
+- **Model-in-the-loop layer (deferred, ADR-0009):** feed each payload
+  through the real Appendix C system prompt + a resident model, assert
+  the emitted plan, then run that plan through the same bus. Needs
+  `inferenced` + a model + the MCP transport; wired when those land.
+
+## Corpus
+
+`src/lib.rs` generates the corpus as payload × vector × target. First
+slice: 10 payloads × 5 vectors (mail/file/screen/web/app-forwarded) × 3
+privileged targets = **150 attempts**. Reaching the 500+ bar is adding
+payloads to the bank, not reworking the harness. The corpus is a library
+so the gate test and the future model-in-the-loop test share it.
+
+Run: `cargo test -p lisa-injection-suite`.
