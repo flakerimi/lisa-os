@@ -103,7 +103,14 @@ async fn providers_list_includes_builtins_and_custom_rows() {
         .collect();
     assert_eq!(
         ids,
-        ["openai", "anthropic", "tinker", "together", "fireworks"]
+        [
+            "openai",
+            "anthropic",
+            "tinker",
+            "together",
+            "fireworks",
+            "huggingface"
+        ]
     );
 
     let res = router

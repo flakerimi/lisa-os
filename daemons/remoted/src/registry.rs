@@ -113,6 +113,21 @@ pub fn builtin_providers() -> Vec<ProviderSpec> {
             notes: "OpenAI-compatible chat completions.".into(),
             builtin: true,
         },
+        ProviderSpec {
+            id: "huggingface".into(),
+            display_name: "Hugging Face".into(),
+            // huggingface.co/docs/inference-providers — the OpenAI-compat
+            // router; one HF token fans out to many upstream providers.
+            base_url: Some("https://router.huggingface.co/v1".into()),
+            auth: AuthStyle::Bearer,
+            dialect: Dialect::OpenaiCompat,
+            notes: "Inference Providers router (chat only). Model ids are \
+                    org/model with an optional policy/provider suffix, e.g. \
+                    openai/gpt-oss-120b:cheapest or :groq. HF token from \
+                    hf.co/settings/tokens with Inference Providers scope."
+                .into(),
+            builtin: true,
+        },
     ]
 }
 
@@ -233,11 +248,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtin_table_has_the_five_verified_providers() {
+    fn builtin_table_has_the_verified_providers() {
         let ids: Vec<String> = builtin_providers().into_iter().map(|p| p.id).collect();
         assert_eq!(
             ids,
-            ["openai", "anthropic", "tinker", "together", "fireworks"]
+            [
+                "openai",
+                "anthropic",
+                "tinker",
+                "together",
+                "fireworks",
+                "huggingface"
+            ]
         );
         for p in builtin_providers() {
             assert!(p.base_url.is_some(), "{} must have a verified URL", p.id);
