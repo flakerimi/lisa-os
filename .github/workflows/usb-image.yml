@@ -1,0 +1,60 @@
+# On-demand USB image (workflow_dispatch): the Track I image with the
+# Lisa packages folded in (ADR-0003: "Track L's packages drop into Track
+# I unchanged"), DHCP networking, and console autologin — dd it to a USB
+# stick and boot an Intel Mac via the Option-key picker. Runs from the
+# stick; it is not an installer (that's M7).
+
+name: usb-image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  usb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Lisa packages + image (Arch container)
+        run: |
+          sudo podman run --rm --privileged -v "$PWD":/src -w /src \
+            docker.io/library/archlinux:latest bash -ec '
+              sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
+              pacman -Syu --noconfirm base-devel rust git mkosi
+
+              # Packages from a clean checkout of HEAD (makepkg refuses root).
+              git clone --quiet /src /build
+              useradd -m builder
+              chown -R builder /build
+              sudo -u builder bash -c "cd /build && bash os/repo-tools/build-packages.sh /build/repo-out"
+
+              # Assemble the USB profile outside the host mount: base
+              # profile + local package dir + DHCP + autologin.
+              cp -r /src/os/mkosi /build/mkosi
+              mkdir -p /build/pkgs /build/extra/etc/systemd/network
+              cp /build/repo-out/*.pkg.tar.* /build/pkgs/
+              printf "[Match]\nName=en*\n\n[Network]\nDHCP=yes\n" \
+                > /build/extra/etc/systemd/network/80-dhcp.network
+              mkdir -p /build/mkosi/mkosi.conf.d
+              cat > /build/mkosi/mkosi.conf.d/50-usb.conf <<EOF
+          [Content]
+          PackageDirectories=/build/pkgs
+          Packages=lisa-inferenced
+                   lisa-modeld
+                   lisa-cli
+          ExtraTrees=/build/extra
+          Autologin=yes
+          EOF
+              mkosi --directory /build/mkosi build
+              cp /build/mkosi/lisa.raw /src/lisa-usb.raw
+            '
+          sudo chown "$USER:" lisa-usb.raw
+      - name: Compress (the empty B slot crushes to ~nothing)
+        run: |
+          zstd -T0 -8 --sparse lisa-usb.raw -o lisa-usb.raw.zst
+          ls -lh lisa-usb.raw.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lisa-usb-image
+          path: lisa-usb.raw.zst
+          retention-days: 7

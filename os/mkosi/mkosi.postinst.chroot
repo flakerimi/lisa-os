@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs inside the image chroot after package installation. Enables the
+# Lisa daemon when it's part of the build (USB/full images); minimal CI
+# boot-check images without the packages are unaffected.
+set -euo pipefail
+
+if [ -f /usr/lib/systemd/system/lisa-inferenced.service ]; then
+    systemctl enable lisa-inferenced.service
+fi
+
+# Network out of the box when networkd config is present (USB images
+# ship a DHCP profile via ExtraTrees).
+if [ -f /etc/systemd/network/80-dhcp.network ]; then
+    systemctl enable systemd-networkd.service systemd-resolved.service
+fi
