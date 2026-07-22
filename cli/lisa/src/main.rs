@@ -169,6 +169,13 @@ enum ModelsCmd {
     },
     /// Print the hardware profile and PLAN §8 tier.
     Profile,
+    /// Show the model catalog annotated by what THIS machine can run
+    /// locally (remote-provider models always run — see `lisa remote`).
+    Catalog {
+        /// Only show models that run (or run tight) on this machine.
+        #[arg(long)]
+        runnable: bool,
+    },
     /// Print the blake3 of a local file (for catalog pinning).
     Hash { file: PathBuf },
     /// Import a local file into the store (copied, source untouched).
@@ -610,6 +617,30 @@ fn models(cmd: ModelsCmd, store_root: Option<PathBuf>) -> anyhow::Result<()> {
         ModelsCmd::Profile => {
             let p = lisa_modeld::profile::profile();
             println!("{}", serde_json::to_string_pretty(&p)?);
+        }
+        ModelsCmd::Catalog { runnable } => {
+            use lisa_modeld::recommend::Fit;
+            let hw = lisa_modeld::profile::profile();
+            let recs = lisa_modeld::recommend::recommend(&lisa_modeld::seed_catalog(), &hw);
+            println!(
+                "your machine: {} GiB RAM, tier {} — local model fit:\n",
+                hw.total_ram_gb, hw.tier
+            );
+            for r in recs {
+                if runnable && r.fit == Fit::TooBig {
+                    continue;
+                }
+                let mark = match r.fit {
+                    Fit::Runs => "OK  ",
+                    Fit::Tight => "TIGHT",
+                    Fit::TooBig => "REMOTE",
+                };
+                println!("  [{mark}] {:<28} {:<10} {}", r.id, r.task, r.fit.label());
+            }
+            println!(
+                "\nBig models that say REMOTE run fine through a provider: \
+                 `lisa remote` (HuggingFace, OpenAI, ...)."
+            );
         }
         ModelsCmd::Hash { file } => {
             println!("{}", ModelStore::hash_file(&file)?);
