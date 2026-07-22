@@ -1,0 +1,18 @@
+# Authoritative service enablement for Lisa images (PLAN §3, §6).
+#
+# mkosi applies systemd presets during image finalization, and Arch's
+# stock presets DISABLE most services — which silently overrode the
+# postinst `systemctl enable` (NetworkManager shipped disabled → no
+# Wi-Fi on the field iMac until started by hand). A preset file sorts
+# first (00-) and wins, so these stay enabled regardless of the postinst
+# or stock presets. Units absent on a given image flavor (e.g. gdm on the
+# minimal CI boot-check) are simply skipped.
+
+enable lisa-inferenced.service
+enable lisa-boot-report.service
+enable gdm.service
+enable NetworkManager.service
+enable iwd.service
+enable systemd-resolved.service
+enable bluetooth.service
+enable systemd-sysupdate.timer

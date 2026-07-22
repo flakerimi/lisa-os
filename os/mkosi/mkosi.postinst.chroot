@@ -47,11 +47,12 @@ fi
 #   deliberately skipped so two DHCP clients never race on en*.
 # - Images without NM: the networkd DHCP profile (USB images ship it
 #   via ExtraTrees) keeps wired networking as before.
+# (Authoritative enablement is os/mkosi/mkosi.extra/.../00-lisa.preset,
+# which survives mkosi's preset pass; these are belt-and-suspenders.)
 if [ -f /usr/lib/systemd/system/NetworkManager.service ]; then
-    systemctl enable NetworkManager.service systemd-resolved.service
-    if [ -f /usr/lib/systemd/system/iwd.service ]; then
-        systemctl enable iwd.service
-    fi
+    systemctl enable NetworkManager.service || true
+    systemctl enable systemd-resolved.service || true
+    systemctl enable iwd.service 2>/dev/null || true
 elif [ -f /etc/systemd/network/80-dhcp.network ]; then
     systemctl enable systemd-networkd.service systemd-resolved.service
 fi
