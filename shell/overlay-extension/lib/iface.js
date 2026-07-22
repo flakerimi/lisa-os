@@ -1,0 +1,48 @@
+// org.lisa.Overlay1 — the headless overlay backend's D-Bus surface
+// (docs/PLAN.md §5.7.1: "one headless overlay backend (session D-Bus
+// service owning state/streams) with thin frontends").
+//
+// Shared by the backend (lisa-overlayd.js exports it) and every thin
+// frontend (the GNOME Shell extension here; the wlr-layer-shell client
+// for Track L consumes the same interface).
+//
+// Ask() returns a query id immediately; tokens arrive as Token signals
+// and the turn ends with Finished. Options (a{sv}) carry the three
+// per-invocation context affordances as booleans:
+//   "my_stuff"  → Context Fabric retrieval (PLAN §5.3, via `lisa context search`)
+//   "window"    → screen capture → VLM (PLAN §5.7.4 — lands M6, reported unavailable)
+//   "selection" → app resource / AT-SPI (PLAN §5.7.3 layer 3 — reported unavailable)
+// plus "model_hint" (s), forwarded to org.lisa.Inference1.
+
+export const OVERLAY_IFACE_XML = `
+<node>
+  <interface name="org.lisa.Overlay1">
+    <method name="Ask">
+      <arg type="s" name="prompt" direction="in"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="t" name="query_id" direction="out"/>
+    </method>
+    <method name="Cancel">
+      <arg type="t" name="query_id" direction="in"/>
+    </method>
+    <method name="GetStatus">
+      <arg type="a{sv}" name="status" direction="out"/>
+    </method>
+    <signal name="Started">
+      <arg type="t" name="query_id"/>
+      <arg type="s" name="meta_json"/>
+    </signal>
+    <signal name="Token">
+      <arg type="t" name="query_id"/>
+      <arg type="s" name="text"/>
+    </signal>
+    <signal name="Finished">
+      <arg type="t" name="query_id"/>
+      <arg type="s" name="status"/>
+      <arg type="s" name="detail"/>
+    </signal>
+  </interface>
+</node>`;
+
+export const OVERLAY_BUS_NAME = 'org.lisa.Overlay1';
+export const OVERLAY_OBJECT_PATH = '/org/lisa/Overlay1';
