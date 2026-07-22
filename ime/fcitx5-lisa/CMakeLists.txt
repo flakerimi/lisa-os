@@ -5,7 +5,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(fcitx5-lisa VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# fcitx5 headers use std::span / string_view::starts_with — C++20 floor.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(GNUInstallDirs)
