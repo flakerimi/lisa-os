@@ -5,14 +5,15 @@
 # the hosted repo (M1) ships signed packages instead (PLAN §5.10).
 
 pkgbase=lisa
-pkgname=(lisa-inferenced lisa-modeld lisa-cli)
+pkgname=(lisa-inferenced lisa-modeld lisa-cli lisa-shell)
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Lisa OS AI layer: local inference as a system service"
 arch=(x86_64 aarch64)
 url="https://github.com/Lisa-AgenticOS/lisa-os"
 license=(GPL-2.0-only)
-makedepends=(cargo)
+# glib2: glib-compile-schemas for the lisa-shell extension schema.
+makedepends=(cargo glib2)
 # makepkg's default lto option injects -flto into ring's C objects, which
 # ld.lld cannot resolve at link time (cross-language LTO breakage).
 options=(!lto)
@@ -62,5 +63,51 @@ package_lisa-cli() {
     depends=(gcc-libs)
     cd "$pkgbase-$pkgver"
     install -Dm755 target/release/lisa "$pkgdir/usr/bin/lisa"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_lisa-shell() {
+    pkgdesc="Lisa OS shell surfaces: assistant overlay, semantic launcher, Ledger app (PLAN §5.7)"
+    # Pure GJS — no compiled code, so one package serves every arch.
+    arch=(any)
+    # gjs runs the overlay backend + Ledger app; libadwaita (pulls gtk4)
+    # renders the Ledger app; lisa-cli is how surfaces reach the
+    # substrate (context search, ledger reads — CLAUDE.md rule 7);
+    # libqalculate ships qalc, the launcher's calculator lane (§5.7.2:
+    # math routes to qalc, never the model).
+    depends=(gjs libadwaita lisa-cli libqalculate)
+    optdepends=('gnome-shell: overlay + launcher Shell extensions (GNOME 46+)')
+    cd "$pkgbase-$pkgver"
+
+    # Surface trees under /usr/share/lisa/shell — the path the D-Bus
+    # activation file and the desktop entry already reference.
+    local share="$pkgdir/usr/share/lisa/shell"
+    install -d "$share"
+    cp -a shell/overlay-extension shell/launcher shell/ledger-app "$share/"
+    rm -rf "$share"/*/tests
+    # Compile the overlay keybinding schema in place so the extension's
+    # getSettings() resolves from its own schemas/ directory.
+    glib-compile-schemas "$share/overlay-extension/schemas"
+
+    # GNOME Shell loads system extensions from
+    # /usr/share/gnome-shell/extensions/<uuid>; symlinks keep
+    # /usr/share/lisa/shell the single install location.
+    install -d "$pkgdir/usr/share/gnome-shell/extensions"
+    ln -s /usr/share/lisa/shell/overlay-extension \
+        "$pkgdir/usr/share/gnome-shell/extensions/lisa-overlay@lisa-os.org"
+    ln -s /usr/share/lisa/shell/launcher \
+        "$pkgdir/usr/share/gnome-shell/extensions/lisa-launcher@lisa-os.org"
+
+    # D-Bus activation for the headless overlay backend (§5.7.1).
+    install -Dm644 shell/overlay-extension/backend/org.lisa.Overlay1.service \
+        "$pkgdir/usr/share/dbus-1/services/org.lisa.Overlay1.service"
+    # Ledger app launcher entry (§5.7.6).
+    install -Dm644 shell/ledger-app/org.lisa.LedgerApp.desktop \
+        "$pkgdir/usr/share/applications/org.lisa.LedgerApp.desktop"
+    # Session defaults: extensions enabled, input-source switcher off
+    # Super+Space so the assistant owns it (§5.7.1). glib2's pacman
+    # hook folds this into the compiled system schemas on install.
+    install -Dm644 os/packages/lisa/10_lisa-shell.gschema.override \
+        "$pkgdir/usr/share/glib-2.0/schemas/10_lisa-shell.gschema.override"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

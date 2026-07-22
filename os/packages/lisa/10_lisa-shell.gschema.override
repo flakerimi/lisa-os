@@ -1,0 +1,18 @@
+# Lisa OS session defaults, shipped by lisa-shell (compiled into the
+# system gschemas by glib2's pacman hook; unknown-schema stanzas are
+# ignored with a warning on non-GNOME hosts).
+#
+# - The M4 surfaces (PLAN §5.7) are live on first login: both Shell
+#   extensions default-enabled.
+# - The assistant owns Super+Space (§5.7.1); GNOME's input-source
+#   switcher — whose default collides — moves to Super+Shift+Space, as
+#   shell/overlay-extension/schemas/ prescribes. The backward binding's
+#   default was Super+Shift+Space, so it is cleared rather than left to
+#   collide in turn.
+
+[org.gnome.shell]
+enabled-extensions=['lisa-overlay@lisa-os.org', 'lisa-launcher@lisa-os.org']
+
+[org.gnome.desktop.wm.keybindings]
+switch-input-source=['<Shift><Super>space']
+switch-input-source-backward=[]
