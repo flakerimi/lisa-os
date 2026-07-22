@@ -1,0 +1,113 @@
+# Release pipeline (workflow_dispatch): builds the Track I image with
+# the Lisa packages folded in, publishes a GitHub Release carrying BOTH
+# the human artifact (dd-able USB image) and the machine artifacts (the
+# systemd-sysupdate transfer set: versioned root partition image + UKI +
+# SHA256SUMS). Installed systems point at releases/latest/download/, so
+# each new release IS the update: `lisa update` pulls it into the B slot
+# (PLAN §6 channels; ADR-0001/0003).
+
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compute version
+        id: ver
+        run: echo "ver=$(date -u +%Y%m%d).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - name: Build Lisa packages + versioned image (Arch container)
+        run: |
+          VER="${{ steps.ver.outputs.ver }}"
+          sudo podman run --rm --privileged -v "$PWD":/src -w /src -e VER="$VER" \
+            docker.io/library/archlinux:latest bash -ec '
+              sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
+              pacman -Syu --noconfirm base-devel rust git mkosi
+
+              # Packages from a clean checkout of HEAD (makepkg refuses root).
+              git clone --quiet /src /build
+              useradd -m builder
+              chown -R builder /build
+              sudo -u builder bash -c "cd /build && bash os/repo-tools/build-packages.sh /build/repo-out"
+
+              # Versioned USB/release profile outside the host mount.
+              cp -r /src/os/mkosi /build/mkosi
+              sed -i "s/^Label=root_1$/Label=root_${VER}/" /build/mkosi/mkosi.repart/10-root.conf
+              mkdir -p /build/pkgs /build/extra/etc/systemd/network
+              cp /build/repo-out/*.pkg.tar.* /build/pkgs/
+              printf "[Match]\nName=en*\n\n[Network]\nDHCP=yes\n" \
+                > /build/extra/etc/systemd/network/80-dhcp.network
+              mkdir -p /build/mkosi/mkosi.conf.d
+              cat > /build/mkosi/mkosi.conf.d/50-release.conf <<EOF
+          [Content]
+          PackageDirectories=/build/pkgs
+          Packages=lisa-inferenced
+                   lisa-modeld
+                   lisa-cli
+          ExtraTrees=/build/extra
+          Autologin=yes
+          EOF
+              mkosi --directory /build/mkosi build
+              cp /build/mkosi/lisa.raw /src/lisa-usb.raw
+            '
+          sudo chown "$USER:" lisa-usb.raw
+      - name: Version the UKI + extract sysupdate artifacts
+        run: |
+          set -o pipefail
+          VER="${{ steps.ver.outputs.ver }}"
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y --no-install-recommends mtools fdisk jq xz-utils zstd >/dev/null
+          OFF=$(( $(sfdisk -J lisa-usb.raw | jq -r '.partitiontable.partitions[0].start') * 512 ))
+          ESP="lisa-usb.raw@@$OFF"
+          # The shipped UKI becomes the versioned type#2 entry so
+          # installed-version detection matches lisa_@v.efi.
+          NAME=$(mdir -b -i "$ESP" ::/EFI/Linux/ | grep -o 'lisa[^/]*\.efi' | head -1)
+          mcopy -i "$ESP" "::/EFI/Linux/$NAME" "lisa_${VER}.efi"
+          mdel -i "$ESP" "::/EFI/Linux/$NAME"
+          mcopy -i "$ESP" "lisa_${VER}.efi" "::/EFI/Linux/lisa_${VER}.efi"
+          mdir -i "$ESP" ::/EFI/Linux/
+          # Root slot A is partition 2; its byte image is the update
+          # payload future systems pull into their B slot.
+          LOOP=$(sudo losetup -P --show -f lisa-usb.raw)
+          sudo dd if="${LOOP}p2" of="lisa_${VER}.root" bs=4M status=none
+          sudo losetup -d "$LOOP"
+          sudo chown "$USER:" "lisa_${VER}.root"
+          xz -T0 -3 "lisa_${VER}.root"
+          zstd -q -T0 -8 --sparse lisa-usb.raw -o "lisa-usb-${VER}.raw.zst"
+          sha256sum "lisa_${VER}.root.xz" "lisa_${VER}.efi" "lisa-usb-${VER}.raw.zst" > SHA256SUMS
+          cat SHA256SUMS; ls -lh lisa_* lisa-usb-*
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${{ steps.ver.outputs.ver }}"
+          cat > notes.md <<EOF
+          Lisa OS image ${VER} (pre-alpha, runs-from-USB — not an installer).
+
+          **Boot it:** decompress \`lisa-usb-${VER}.raw.zst\` (zstd -d), write to a
+          16 GB+ USB stick (\`dd\` / Etcher), boot an Intel Mac holding ⌥ Option →
+          "EFI Boot". Console autologin (dev image — no secrets on the stick).
+          Includes lisa-inferenced (append-only ledger, stub engine by default),
+          the \`lisa\` CLI, DHCP on ethernet.
+
+          **Self-update:** installed systems track this repo's releases —
+          \`lisa update\` (or \`systemd-sysupdate update\`) pulls the newest
+          release's \`lisa_@v.root.xz\` + \`lisa_@v.efi\` into the inactive A/B
+          slot; reboot lands in it, boot-counting rolls back automatically if it
+          fails. \`lisa_${VER}.root.xz\`, \`lisa_${VER}.efi\`, and \`SHA256SUMS\`
+          are that machinery — humans want the \`.raw.zst\`.
+          EOF
+          gh release create "v${VER}" \
+            --title "Lisa OS ${VER}" \
+            --notes-file notes.md \
+            "lisa-usb-${VER}.raw.zst" \
+            "lisa_${VER}.root.xz" \
+            "lisa_${VER}.efi" \
+            SHA256SUMS

@@ -85,6 +85,13 @@ enum Command {
         #[arg(long, default_value = "host", global = true)]
         app: String,
     },
+    /// Pull the newest OS release into the inactive A/B slot
+    /// (systemd-sysupdate; Track I systems).
+    Update {
+        /// Reboot into the new version after a successful update.
+        #[arg(long)]
+        reboot: bool,
+    },
     /// Embed text into a vector (reads stdin when piped).
     Embed {
         text: Vec<String>,
@@ -185,6 +192,7 @@ fn run() -> anyhow::Result<()> {
         }
         Command::Ledger { tail, json, db } => ledger_cmd(tail, json, db),
         Command::Embed { text, url } => embed(text, &url),
+        Command::Update { reboot } => update_cmd(reboot),
         Command::Context { cmd } => context_cmd(cmd),
         Command::Memory { cmd, app } => memory_cmd(cmd, &app),
     }
@@ -276,6 +284,32 @@ fn ask(
 }
 
 use std::io::IsTerminal;
+
+fn update_cmd(reboot: bool) -> anyhow::Result<()> {
+    let sysupdate = std::path::Path::new("/usr/lib/systemd/systemd-sysupdate");
+    if !sysupdate.exists() {
+        bail!(
+            "systemd-sysupdate not found — OS self-update runs on Lisa (Track I) systems; \
+             updates are published at https://github.com/Lisa-AgenticOS/lisa-os/releases"
+        );
+    }
+    let status = std::process::Command::new(sysupdate)
+        .arg("update")
+        .status()?;
+    if !status.success() {
+        bail!("systemd-sysupdate failed ({status})");
+    }
+    if reboot {
+        std::process::Command::new(sysupdate)
+            .arg("reboot")
+            .status()?;
+    } else {
+        println!(
+            "update staged in the inactive slot — reboot to use it (rollback is automatic on boot failure)"
+        );
+    }
+    Ok(())
+}
 
 fn context_store() -> anyhow::Result<lisa_contextd::ContextStore> {
     let path = std::env::var_os("LISA_CONTEXT_DB")
