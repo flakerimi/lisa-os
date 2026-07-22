@@ -986,6 +986,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lisa-agentd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "lisa-ledger",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+]
+
+[[package]]
 name = "lisa-contextd"
 version = "0.1.0"
 dependencies = [
@@ -1023,6 +1041,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zbus",
+]
+
+[[package]]
+name = "lisa-injection-suite"
+version = "0.1.0"
+dependencies = [
+ "lisa-agentd",
+ "lisa-ledger",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -11,3 +11,4 @@ os/mkosi/mkosi.builddir/
 
 # Local model stores / scratch
 *.gguf
+.claude/

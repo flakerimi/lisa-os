@@ -112,6 +112,26 @@ Pantheon. Feeds the M4 shell ADR.
   still need a Linux desktop session (the iMac). Deferred within M4:
   voice v1 (§5.7.5), writing-tools layer 1 (GTK module), wlr-layer-shell
   overlay frontend, bus-action launcher lane (M5).
+- **M5 (branch `m5-agentd`, §5.4, ADR-0009):** Agent Bus core landed —
+  `daemons/agentd` joins the workspace with MCP-native manifest loading
+  + validation (Appendix B), tool registry + discovery, the
+  confirmation-tier state machine (read→silent, write→chip,
+  destructive→modal) enforced **at the bus** with rule-6 provenance
+  escalation (untrusted or empty chain escalates one tier, fail closed),
+  Ledger attribution on every call path, and the undo journal
+  (`agent-journal.db`) with manifest-declared `$input`/`$result`
+  compensations behind `lisa undo`. D-Bus surface `org.lisa.Agent1`
+  (ListTools/Discover/RequestCall/Confirm/Undo + ConfirmationRequested),
+  tested over zbus p2p on macOS. `tests/injection-suite` seeded: 150 of
+  the 500+ corpus, bus-layer gate green (0 unconfirmed privileged
+  dispatches). Guardrail prompt at `daemons/agentd/prompts/`. Deferred
+  (next slice): MCP wire transport (per-app unix socket + activation)
+  behind the `Dispatcher` trait, `libs/mcp-bus`, `lisa tools/call/undo`
+  CLI verbs, btrfs-snapshot file-op compensation, first-party app tools,
+  model-in-the-loop injection layer — so the §5.4 demo flow is proven in
+  parts, not yet end-to-end. Overlay backend swaps its direct
+  `org.lisa.Inference1` calls for `RequestCall` when it becomes an Agent
+  Bus client.
 - **Hardening gaps (noted in releases):** sysupdate `Verify=no` until
   signed manifests (M1); `/etc` not overlaid yet; Arch base not yet
   snapshot-pinned in release builds (`os/repo-tools/snapshot.sh` exists).

@@ -5,8 +5,9 @@ members = [
     "libs/lisa-ledger",
     "daemons/inferenced",
     "daemons/modeld",
-    "cli/lisa", "libs/lisa-ledger", "daemons/contextd", "libs/forge-harness",
+    "cli/lisa", "daemons/contextd", "libs/forge-harness",
     "portals/xdg-desktop-portal-lisa",
+    "daemons/agentd", "tests/injection-suite",
 ]
 
 [workspace.package]
