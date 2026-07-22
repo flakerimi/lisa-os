@@ -85,6 +85,18 @@ enum Command {
         #[arg(long, default_value = "host", global = true)]
         app: String,
     },
+    /// Write the newest Lisa OS release to a whole disk — ERASES IT.
+    /// The proto-installer (a guided OOBE installer is M7).
+    Install {
+        /// Target block device (e.g. /dev/sda). Everything on it is lost.
+        target: PathBuf,
+        /// Local .raw.zst to write instead of downloading the latest release.
+        #[arg(long)]
+        from: Option<PathBuf>,
+        /// Skip the typed confirmation (scripts/CI only).
+        #[arg(long)]
+        yes: bool,
+    },
     /// Pull the newest OS release into the inactive A/B slot
     /// (systemd-sysupdate; Track I systems).
     Update {
@@ -192,6 +204,7 @@ fn run() -> anyhow::Result<()> {
         }
         Command::Ledger { tail, json, db } => ledger_cmd(tail, json, db),
         Command::Embed { text, url } => embed(text, &url),
+        Command::Install { target, from, yes } => install_cmd(&target, from, yes),
         Command::Update { reboot } => update_cmd(reboot),
         Command::Context { cmd } => context_cmd(cmd),
         Command::Memory { cmd, app } => memory_cmd(cmd, &app),
@@ -284,6 +297,93 @@ fn ask(
 }
 
 use std::io::IsTerminal;
+
+const RELEASES_API: &str = "https://api.github.com/repos/Lisa-AgenticOS/lisa-os/releases/latest";
+
+fn install_cmd(target: &PathBuf, from: Option<PathBuf>, yes: bool) -> anyhow::Result<()> {
+    // Guards: block devices only on Linux and never the running disk;
+    // regular-file targets are allowed anywhere (testing, image work).
+    if !target.exists() {
+        bail!("{} does not exist", target.display());
+    }
+    let is_block = {
+        use std::os::unix::fs::FileTypeExt;
+        std::fs::metadata(target)?.file_type().is_block_device()
+    };
+    if is_block && !cfg!(target_os = "linux") {
+        bail!("writing block devices is supported on Linux — boot the Lisa USB and run it there");
+    }
+    let target_str = target.to_string_lossy();
+    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts")
+        && mounts.lines().any(|l| {
+            l.split_whitespace()
+                .next()
+                .is_some_and(|d| d.starts_with(target_str.as_ref()))
+        })
+    {
+        bail!(
+            "{} has mounted partitions — it looks like the disk this system is running from. \
+             Boot from the USB stick and install to the internal disk instead.",
+            target.display()
+        );
+    }
+
+    eprintln!(
+        "!! {} will be COMPLETELY ERASED — every partition, every file.",
+        target.display()
+    );
+    if !yes {
+        eprint!("Type ERASE to continue: ");
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if answer.trim() != "ERASE" {
+            println!("aborted — nothing written");
+            return Ok(());
+        }
+    }
+
+    let mut sink = std::fs::OpenOptions::new().write(true).open(target)?;
+    let written = match from {
+        Some(path) => {
+            let file = std::fs::File::open(&path)?;
+            let mut decoder = zstd::Decoder::new(std::io::BufReader::new(file))?;
+            std::io::copy(&mut decoder, &mut sink)?
+        }
+        None => {
+            // Resolve the newest release's .raw.zst asset and stream it
+            // straight through zstd onto the disk — no scratch space.
+            let mut resp = ureq::get(RELEASES_API)
+                .header("User-Agent", "lisa-cli")
+                .call()
+                .context("querying latest release")?;
+            let release: serde_json::Value = resp.body_mut().read_json()?;
+            let asset = release["assets"]
+                .as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .find(|x| x["name"].as_str().is_some_and(|n| n.ends_with(".raw.zst")))
+                })
+                .ok_or_else(|| anyhow::anyhow!("no .raw.zst asset in the latest release"))?;
+            let url = asset["browser_download_url"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("asset has no download url"))?;
+            let name = asset["name"].as_str().unwrap_or("image");
+            eprintln!(">> streaming {name} to {}", target.display());
+            let mut resp = ureq::get(url).call().context("downloading image")?;
+            let reader = std::io::BufReader::new(resp.body_mut().as_reader());
+            let mut decoder = zstd::Decoder::new(reader)?;
+            std::io::copy(&mut decoder, &mut sink)?
+        }
+    };
+    sink.sync_all()?;
+    println!(
+        ">> wrote {:.1} GiB to {} — remove the USB stick and reboot; \
+         first boot grows /var to fill the disk",
+        written as f64 / (1u64 << 30) as f64,
+        target.display()
+    );
+    Ok(())
+}
 
 fn update_cmd(reboot: bool) -> anyhow::Result<()> {
     let sysupdate = std::path::Path::new("/usr/lib/systemd/systemd-sysupdate");
