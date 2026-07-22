@@ -1,0 +1,162 @@
+// Lisa semantic launcher — GNOME Shell search provider (PLAN §5.7.2).
+//
+// Augments (not replaces) Shell search: GNOME's own providers keep the
+// app-launch lane; this provider adds
+//   - calculator/unit answers via qalc (the model routes, it never
+//     does arithmetic — routing logic in lib/ranking.js),
+//   - file hits from the Context Fabric (`lisa context search`,
+//     FTS5 lexical today; retrieval is ledgered by the CLI).
+// Bus actions ("rotate this pdf") join in M5 when lisa-agentd lands;
+// semantic vector refinement joins when contextd's embedding pipeline
+// lands (§5.3). Budgets (§5.7.2): lexical < 150 ms — FTS5 over a warm
+// SQLite plus one subprocess spawn; measured for real by the perf gate
+// on reference hardware (§11), not on the dev host.
+
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {
+    calculatorExpression, parseQalcOutput, parseContextHits,
+    mergeResults, parseResultId,
+} from './lib/ranking.js';
+
+Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
+
+const MAX_RESULTS = 8;
+const FILE_HITS = 5;
+
+class LisaSearchProvider {
+    constructor(extension) {
+        this._extension = extension;
+        this.id = 'lisa-launcher';
+        this.appInfo = null;         // grid results, no app header
+        this.canLaunchSearch = false;
+        this.isRemoteProvider = false;
+        this._snippets = new Map();  // file path → snippet, for metas
+    }
+
+    // ---- Shell search provider API ------------------------------------
+
+    async getInitialResultSet(terms, cancellable) {
+        const query = terms.join(' ').trim();
+        if (query.length < 2)
+            return [];
+
+        const [calc, files] = await Promise.all([
+            this._runCalculator(query, cancellable),
+            this._searchFiles(query, cancellable),
+        ]);
+
+        this._snippets.clear();
+        for (const hit of files)
+            this._snippets.set(hit.source, hit.snippet);
+
+        return mergeResults({calc, files}, MAX_RESULTS);
+    }
+
+    getSubsearchResultSet(previousResults, terms, cancellable) {
+        // FTS5 is fast enough to re-query rather than filter stale hits.
+        return this.getInitialResultSet(terms, cancellable);
+    }
+
+    getResultMetas(resultIds, _cancellable) {
+        return Promise.resolve(resultIds.map(id => {
+            const parsed = parseResultId(id);
+            switch (parsed?.kind) {
+            case 'calc':
+                return {
+                    id,
+                    name: parsed.result,
+                    description: `${parsed.expression} — qalc · Enter copies`,
+                    createIcon: size => new St.Icon({
+                        icon_name: 'accessories-calculator-symbolic',
+                        icon_size: size,
+                    }),
+                };
+            case 'file':
+                return {
+                    id,
+                    name: GLib.path_get_basename(parsed.path),
+                    description: this._snippets.get(parsed.path) ?? parsed.path,
+                    createIcon: size => new St.Icon({
+                        gicon: Gio.content_type_get_icon(
+                            Gio.content_type_guess(parsed.path, null)[0]),
+                        icon_size: size,
+                    }),
+                };
+            default:
+                return {id, name: id, description: '', createIcon: () => null};
+            }
+        }));
+    }
+
+    activateResult(resultId, _terms) {
+        const parsed = parseResultId(resultId);
+        if (parsed?.kind === 'file') {
+            const file = Gio.File.new_for_path(parsed.path);
+            Gio.AppInfo.launch_default_for_uri(file.get_uri(), null);
+            Main.overview.hide();
+        } else if (parsed?.kind === 'calc') {
+            St.Clipboard.get_default().set_text(
+                St.ClipboardType.CLIPBOARD, parsed.result);
+            Main.overview.hide();
+        }
+    }
+
+    filterResults(results, maxNumber) {
+        return results.slice(0, maxNumber);
+    }
+
+    // ---- lanes ---------------------------------------------------------
+
+    async _runCalculator(query, cancellable) {
+        const expression = calculatorExpression(query);
+        if (expression === null)
+            return null;
+        try {
+            const proc = Gio.Subprocess.new(['qalc', '-t', expression],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+            const [stdout] = await proc.communicate_utf8_async(null, cancellable);
+            if (!proc.get_successful())
+                return null;
+            const result = parseQalcOutput(stdout);
+            return result !== null && result !== expression
+                ? {expression, result} : null;
+        } catch {
+            return null; // qalc missing or cancelled — no calc lane.
+        }
+    }
+
+    async _searchFiles(query, cancellable) {
+        try {
+            const cli = GLib.getenv('LISA_CLI') ?? 'lisa';
+            const proc = Gio.Subprocess.new(
+                [cli, 'context', 'search', query, '--limit', String(FILE_HITS)],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+            const [stdout] = await proc.communicate_utf8_async(null, cancellable);
+            if (!proc.get_successful())
+                return [];
+            return parseContextHits(stdout);
+        } catch {
+            return []; // index absent or cancelled — other lanes still serve.
+        }
+    }
+}
+
+export default class LisaLauncherExtension extends Extension {
+    enable() {
+        this._provider = new LisaSearchProvider(this);
+        Main.overview.searchController.addProvider(this._provider);
+    }
+
+    disable() {
+        if (this._provider) {
+            Main.overview.searchController.removeProvider(this._provider);
+            this._provider = null;
+        }
+    }
+}
