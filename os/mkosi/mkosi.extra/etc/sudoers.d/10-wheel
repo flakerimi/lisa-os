@@ -1,0 +1,5 @@
+# PROVISIONAL field-test policy (see os/mkosi/README.md): wheel may
+# sudo with password. Arch's stock /etc/sudoers ships this line
+# commented out; the image's only user (lisa/lisa, until the M7 OOBE
+# creates real accounts) is in wheel.
+%wheel ALL=(ALL:ALL) ALL

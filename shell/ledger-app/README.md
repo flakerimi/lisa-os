@@ -33,3 +33,8 @@ executions land with M5.
 
 Run (dev): `gjs -m shell/ledger-app/lisa-ledger-app.js` with the
 `lisa` CLI on PATH (or `LISA_CLI=…`).
+
+Install (packaged): ships in the `lisa-shell` package
+(os/packages/lisa) — tree under `/usr/share/lisa/shell/`, desktop
+entry in `/usr/share/applications/`. The Track I release image folds
+it in.

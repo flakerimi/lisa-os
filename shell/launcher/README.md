@@ -29,5 +29,10 @@ reference hardware (§11), not asserted on dev hosts.
 
 Install (dev): symlink into
 `~/.local/share/gnome-shell/extensions/lisa-launcher@lisa-os.org`,
-re-log. Needs `qalculate` (qalc) and an indexed context store
+re-log. Needs `libqalculate` (qalc) and an indexed context store
 (`lisa context index ~/Documents`).
+
+Install (packaged): ships in the `lisa-shell` package
+(os/packages/lisa) — tree under `/usr/share/lisa/shell/`, extension
+symlink, qalc via the `libqalculate` dependency, default-enabled by
+the package's gschema override. The Track I release image folds it in.

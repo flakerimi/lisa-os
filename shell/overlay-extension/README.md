@@ -39,3 +39,10 @@ Install (dev): symlink this directory into
 `glib-compile-schemas schemas/`, install the service file, re-log.
 GNOME's input-source switcher also claims Super+Space; the image/layer
 remaps it (see `schemas/`).
+
+Install (packaged): the `lisa-shell` package (os/packages/lisa) ships
+this tree under `/usr/share/lisa/shell/`, the extension as a symlink in
+`/usr/share/gnome-shell/extensions/`, the D-Bus activation file, and a
+gschema override that default-enables the extension and moves the
+input-source switcher to Super+Shift+Space. The Track I release image
+folds it in.
