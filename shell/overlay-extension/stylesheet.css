@@ -1,0 +1,48 @@
+/* Assistant overlay (PLAN §5.7.1): translucent layer, one visual voice
+   (docs/notes/design-direction.md — restrained, elementary-leaning).
+   Colors stay near-neutral so shell themes (Appendix E lane 6) can
+   restyle without fighting us. */
+
+.lisa-overlay {
+    background-color: rgba(20, 22, 26, 0.85);
+    border-radius: 16px;
+    padding: 16px;
+    spacing: 10px;
+}
+
+.lisa-overlay-chips {
+    spacing: 8px;
+}
+
+.lisa-chip {
+    border-radius: 999px;
+    padding: 4px 12px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 10.5pt;
+}
+
+.lisa-chip:checked {
+    background-color: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+}
+
+.lisa-overlay-entry {
+    font-size: 13pt;
+    border-radius: 10px;
+}
+
+.lisa-overlay-scroll {
+    max-height: 340px;
+}
+
+.lisa-overlay-response {
+    color: #f2f2f2;
+    font-size: 11.5pt;
+    padding: 6px 2px;
+}
+
+.lisa-overlay-footer {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 9.5pt;
+}
