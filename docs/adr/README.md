@@ -36,3 +36,5 @@ What gets easier, what gets harder, what we gave up.
 - [ADR-0004](0004-flutter-lane-forge.md) — Flutter app lane + the Forge
 - [ADR-0005](0005-gpl2-license.md) — License: GPL-2.0-only, same as the kernel
 - [ADR-0006](0006-monorepo-staged-extraction.md) — Monorepo with staged extraction (split triggers, not dates)
+- [ADR-0007](0007-fcitx5-addon-cxx.md) — fcitx5 writing-tools addon in C++
+- [ADR-0008](0008-remote-providers.md) — BYO remote providers via the `lisa-remoted` egress broker
