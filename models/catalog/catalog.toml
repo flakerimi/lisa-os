@@ -9,6 +9,20 @@
 catalog_version = 1
 
 [[model]]
+# On-device chat model with a verified load. Gemma's license is
+# weights-available but restrictive — a clearly-labeled option, never a
+# silent default (PLAN §7). ~1 GiB, runs on the tier-0 floor.
+id = "gemma-3-1b-it-q8"
+task = "system"
+tiers = [0, 1]
+license = "Gemma-Terms-of-Use"
+engine = "llama-server"
+source = "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf"
+blake3 = "109f719b11458bcacb9809e221ae8170b9e0b991209a33e819f1908d04b3e7c8"
+min_ram_gb = 2
+notes = "Gemma 3 1B (ggml-org GGUF, ungated). Verified loads + generates 2026-07-22. License: ai.google.dev/gemma/terms — accept before use."
+
+[[model]]
 id = "qwen3-0.6b-instruct-q8"
 task = "system"
 tiers = [0]

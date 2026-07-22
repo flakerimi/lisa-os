@@ -203,6 +203,8 @@ enum ModelsCmd {
         #[arg(long)]
         runnable: bool,
     },
+    /// Download a catalog model by id (resolves its pinned source+hash).
+    Get { id: String },
     /// Print the blake3 of a local file (for catalog pinning).
     Hash { file: PathBuf },
     /// Import a local file into the store (copied, source untouched).
@@ -781,6 +783,29 @@ fn models(cmd: ModelsCmd, store_root: Option<PathBuf>) -> anyhow::Result<()> {
             println!(
                 "\nBig models that say REMOTE run fine through a provider: \
                  `lisa remote` (HuggingFace, OpenAI, ...)."
+            );
+        }
+        ModelsCmd::Get { id } => {
+            let catalog = lisa_modeld::seed_catalog();
+            let entry = catalog.models.iter().find(|m| m.id == id).ok_or_else(|| {
+                anyhow::anyhow!("no catalog model `{id}` (see `lisa models catalog`)")
+            })?;
+            if entry.revoked {
+                bail!("`{id}` is revoked and must not be installed");
+            }
+            let (Some(source), Some(hash)) = (&entry.source, &entry.blake3) else {
+                bail!("`{id}` has no pinned source yet (catalog entry not finalized)");
+            };
+            println!(
+                "pulling `{id}` ({}) — license: {}",
+                entry.task, entry.license
+            );
+            let e = fetch::pull(&store, source, &id, hash)?;
+            println!(
+                "installed `{}` ({:.2} GiB) — run it: lisa-inferenced --model $HOME/.local/share/lisa/models/refs/{}",
+                e.name,
+                e.size as f64 / (1 << 30) as f64,
+                e.name
             );
         }
         ModelsCmd::Hash { file } => {
