@@ -13,7 +13,7 @@ complete; M2 (Ledger) and M3 (context fabric) have working cores. Every
 claim below is enforced by CI on `main`, not aspirational.
 
 - Repo: **github.com/Lisa-AgenticOS/lisa-os** · License: GPL-2.0-only (ADR-0005)
-- Latest release: **v20260722.4** (runs-from-USB image + sysupdate transfer set)
+- Latest release: **v20260722.6** (GNOME desktop image) (runs-from-USB image + sysupdate transfer set)
 - CI on `main`: green (lint, tests, egress, openai-compat, layer-e2e; nightly image + A/B rollback + sysupdate; release pipeline)
 
 ## What works (verified)
