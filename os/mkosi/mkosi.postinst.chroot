@@ -22,9 +22,13 @@ fi
 
 # GNOME desktop session (PLAN §3 desktop strategy; the M4 §5.7 shell
 # surfaces load into it). Minimal CI boot-check images without gdm are
-# unaffected.
+# unaffected. Enabling gdm is not enough — it only starts once
+# graphical.target is the boot target, so set that explicitly. Without
+# this the field iMac booted to a text console (gdm enabled but never
+# reached). Belt-and-suspenders with 00-lisa.preset which enables gdm.
 if [ -f /usr/lib/systemd/system/gdm.service ]; then
     systemctl enable gdm.service
+    systemctl set-default graphical.target
 fi
 
 # Field-test login — PROVISIONAL until the M7 first-boot OOBE (PLAN §6)
