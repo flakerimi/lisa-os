@@ -13,3 +13,9 @@ fi
 if [ -f /etc/systemd/network/80-dhcp.network ]; then
     systemctl enable systemd-networkd.service systemd-resolved.service
 fi
+
+# Automatic update staging: check the release channel daily, stage into
+# the inactive slot; reboots apply, boot-counting rolls back failures.
+if [ -f /usr/lib/sysupdate.d/50-root.conf ]; then
+    systemctl enable systemd-sysupdate.timer || true
+fi
