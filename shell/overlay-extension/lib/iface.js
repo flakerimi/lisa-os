@@ -46,3 +46,31 @@ export const OVERLAY_IFACE_XML = `
 
 export const OVERLAY_BUS_NAME = 'org.lisa.Overlay1';
 export const OVERLAY_OBJECT_PATH = '/org/lisa/Overlay1';
+
+// org.lisa.Overlay1.UI — UI-control surface owned by a *frontend*
+// (the GNOME Shell extension here; the wlr-layer-shell client can own
+// the same name). Lets other shell surfaces summon the overlay with a
+// prompt — the §5.7.2 launcher's "Ask Lisa" lane does the
+// Spotlight-style handoff: overview closes, overlay opens with the
+// query already submitted. The headless backend (org.lisa.Overlay1
+// above) is deliberately not involved: it has no UI.
+//
+// Summon()'s options (a{sv}) accept the same chip booleans as Ask()
+// ("my_stuff", "window", "selection") to preset the toggles; an empty
+// prompt just shows the layer, exactly like Super+Space.
+export const OVERLAY_UI_IFACE_XML = `
+<node>
+  <interface name="org.lisa.Overlay1.UI">
+    <method name="Summon">
+      <arg type="s" name="prompt" direction="in"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+    </method>
+    <method name="Hide"/>
+    <method name="GetVisible">
+      <arg type="b" name="visible" direction="out"/>
+    </method>
+  </interface>
+</node>`;
+
+export const OVERLAY_UI_BUS_NAME = 'org.lisa.Overlay1.UI';
+export const OVERLAY_UI_OBJECT_PATH = '/org/lisa/Overlay1/UI';

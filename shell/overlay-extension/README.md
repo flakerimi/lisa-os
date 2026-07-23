@@ -20,6 +20,12 @@ frontends: GNOME Shell extension here; the wlr-layer-shell client
 - `extension.js` + `metadata.json` + `schemas/` + `stylesheet.css` —
   the GNOME Shell frontend (ESM, GNOME 46+): keybinding, chips, entry,
   streamed response, footer showing attached context and ledgering.
+  Also owns **`org.lisa.Overlay1.UI`** on the session bus
+  (`Summon(prompt, options)`, `Hide`, `GetVisible`) — the UI-control
+  surface other shell surfaces use to summon the overlay
+  programmatically; the §5.7.2 launcher's "Ask Lisa" lane hands its
+  queries over here. Owned by the frontend because the headless
+  backend has no UI; the wlr client can own the same name.
 - `lib/` — shared pure logic (`envelope.js`: Appendix C fencing, CLI
   output parsing; `iface.js`: the D-Bus interface XML).
 - `tests/` — unit tests for `lib/` (`just shell-test`; runs under gjs,

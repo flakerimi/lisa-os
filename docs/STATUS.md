@@ -106,7 +106,10 @@ Pantheon. Feeds the M4 shell ADR.
   watchers, ACL fuzz suite, the portal Context/Memory surfaces.
 - **M4:** first passes landed (branch `m4-shell`): overlay backend
   (`org.lisa.Overlay1`) + GNOME extension, launcher search provider
-  (qalc + context lanes), Ledger app (GTK4/GJS), fcitx5-lisa proofread
+  (qalc + context lanes + **"Ask Lisa" handoff** — every query can
+  summon the overlay via the frontend-owned `org.lisa.Overlay1.UI`
+  name, Spotlight-style, prompt pre-submitted; promoted when the query
+  reads like a question), Ledger app (GTK4/GJS), fcitx5-lisa proofread
   addon (ADR-0007) — pure logic unit-tested everywhere (`just
   shell-test`/`ime-test`); live verification and the §5.7 budget runs
   still need a Linux desktop session (the iMac). Deferred within M4:

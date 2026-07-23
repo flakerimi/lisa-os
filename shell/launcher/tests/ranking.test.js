@@ -2,7 +2,7 @@
 import {test, assert, assertEq, finish} from '../../testing/harness.js';
 import {
     calculatorExpression, parseQalcOutput, parseContextHits,
-    mergeResults, parseResultId,
+    looksLikeQuestion, mergeResults, parseResultId,
 } from '../lib/ranking.js';
 
 test('arithmetic routes to qalc, never the model', () => {
@@ -71,6 +71,65 @@ test('parseResultId inverts mergeResults ids', () => {
     assertEq(parseResultId('file:/home/u/x y.md'), {kind: 'file', path: '/home/u/x y.md'});
     assertEq(parseResultId('action:rotate-pdf'), {kind: 'action', name: 'rotate-pdf'});
     assertEq(parseResultId('bogus'), null);
+});
+
+test('looksLikeQuestion: question shapes promote the ask lane', () => {
+    assert(looksLikeQuestion('how do I update the system'));
+    assert(looksLikeQuestion('capital of france?'));
+    assert(looksLikeQuestion('What is the ledger'));
+    assert(looksLikeQuestion("what's on my calendar"));
+    assert(looksLikeQuestion('tell me a joke'));
+    assert(looksLikeQuestion('meeting notes from last week'));
+});
+
+test('looksLikeQuestion: terse lookups do not promote', () => {
+    assert(!looksLikeQuestion('notes'));
+    assert(!looksLikeQuestion('2+2'));
+    assert(!looksLikeQuestion('settings wi-fi'));
+    assert(!looksLikeQuestion(''));
+    assert(!looksLikeQuestion(null));
+});
+
+test('ask lane: promoted questions sit right after the calc slot', () => {
+    const ids = mergeResults({
+        files: [{provenance: 'file', source: '/a.md', snippet: 's'}],
+        ask: 'what is the capital of france',
+    }, 8);
+    assertEq(ids, ['ask:what is the capital of france', 'file:/a.md']);
+});
+
+test('ask lane: calc keeps first place, unpromoted ask goes last', () => {
+    const ids = mergeResults({
+        calc: {expression: '2+2', result: '4'},
+        files: [{provenance: 'file', source: '/a.md', snippet: 's'}],
+        ask: '2+2',
+    }, 8);
+    assertEq(ids, ['calc:2+2=4', 'file:/a.md', 'ask:2+2']);
+});
+
+test('ask lane: promoted ask still yields to calc', () => {
+    const ids = mergeResults({
+        calc: {expression: '12 km to miles', result: '7.4564543 mile'},
+        ask: 'how many miles is 12 km?',
+    }, 8);
+    assertEq(ids, ['calc:12 km to miles=7.4564543 mile', 'ask:how many miles is 12 km?']);
+});
+
+test('ask lane: absent when no query, trimmed, and capped like any lane', () => {
+    assertEq(mergeResults({ask: ''}, 8), []);
+    assertEq(mergeResults({ask: '  '}, 8), []);
+    assertEq(mergeResults({ask: ' hi '}, 8), ['ask:hi']);
+    // An unpromoted ask is the first thing the cap sheds.
+    const files = Array.from({length: 8}, (_, i) =>
+        ({provenance: 'file', source: `/${i}`, snippet: ''}));
+    assertEq(mergeResults({files, ask: 'x'}, 8).includes('ask:x'), false);
+    assert(mergeResults({files, ask: 'why x?'}, 8).includes('ask:why x?'));
+});
+
+test('parseResultId handles ask ids, including queries with colons', () => {
+    assertEq(parseResultId('ask:what is rust: ownership'),
+        {kind: 'ask', query: 'what is rust: ownership'});
+    assertEq(parseResultId('ask:'), {kind: 'ask', query: ''});
 });
 
 finish('launcher ranking');

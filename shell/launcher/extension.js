@@ -2,8 +2,12 @@
 //
 // Augments (not replaces) Shell search: GNOME's own providers keep the
 // app-launch lane; this provider adds
+//   - "Ask Lisa": the Spotlight-style assistant handoff — every query
+//     gets an entry that summons the §5.7.1 overlay with the prompt
+//     already submitted (promoted above files when the query reads
+//     like a question; routing logic in lib/ranking.js),
 //   - calculator/unit answers via qalc (the model routes, it never
-//     does arithmetic — routing logic in lib/ranking.js),
+//     does arithmetic),
 //   - file hits from the Context Fabric (`lisa context search`,
 //     FTS5 lexical today; retrieval is ledgered by the CLI).
 // Bus actions ("rotate this pdf") join in M5 when lisa-agentd lands;
@@ -28,6 +32,12 @@ Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
 
 const MAX_RESULTS = 8;
 const FILE_HITS = 5;
+
+// UI-control surface of the assistant overlay (§5.7.1), owned by its
+// frontend — see shell/overlay-extension. Kept as literal strings so
+// this extension directory stays self-contained.
+const OVERLAY_UI_BUS = 'org.lisa.Overlay1.UI';
+const OVERLAY_UI_PATH = '/org/lisa/Overlay1/UI';
 
 class LisaSearchProvider {
     constructor(extension) {
@@ -55,7 +65,7 @@ class LisaSearchProvider {
         for (const hit of files)
             this._snippets.set(hit.source, hit.snippet);
 
-        return mergeResults({calc, files}, MAX_RESULTS);
+        return mergeResults({calc, ask: query, files}, MAX_RESULTS);
     }
 
     getSubsearchResultSet(previousResults, terms, cancellable) {
@@ -74,6 +84,18 @@ class LisaSearchProvider {
                     description: `${parsed.expression} — qalc · Enter copies`,
                     createIcon: size => new St.Icon({
                         icon_name: 'accessories-calculator-symbolic',
+                        icon_size: size,
+                    }),
+                };
+            case 'ask':
+                return {
+                    id,
+                    name: `Ask Lisa: “${parsed.query}”`,
+                    description: 'Start an assistant session · Enter opens the overlay',
+                    createIcon: size => new St.Icon({
+                        gicon: new Gio.FileIcon({
+                            file: this._extension.dir.get_child('lisa-mark.svg'),
+                        }),
                         icon_size: size,
                     }),
                 };
@@ -104,7 +126,29 @@ class LisaSearchProvider {
             St.Clipboard.get_default().set_text(
                 St.ClipboardType.CLIPBOARD, parsed.result);
             Main.overview.hide();
+        } else if (parsed?.kind === 'ask') {
+            Main.overview.hide();
+            this._summonOverlay(parsed.query);
         }
+    }
+
+    // Spotlight-style handoff: the overview closes and the assistant
+    // overlay opens with the query already submitted. The UI name is
+    // owned by the overlay *frontend* (shell/overlay-extension); if it
+    // is not running there is nothing to summon, so tell the user.
+    _summonOverlay(query) {
+        Gio.DBus.session.call(
+            OVERLAY_UI_BUS, OVERLAY_UI_PATH, OVERLAY_UI_BUS, 'Summon',
+            new GLib.Variant('(sa{sv})', [query, {}]), null,
+            Gio.DBusCallFlags.NONE, -1, null, (conn, res) => {
+                try {
+                    Gio.DBus.session.call_finish(res);
+                } catch (e) {
+                    logError(e, 'overlay summon failed');
+                    Main.notify('Lisa assistant unavailable',
+                        'The overlay extension (lisa-overlay@lisa-os.org) is not running.');
+                }
+            });
     }
 
     filterResults(results, maxNumber) {

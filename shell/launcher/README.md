@@ -11,6 +11,11 @@ model). Budgets: first results < 150 ms, semantic refinement < 700 ms.
 - `extension.js` + `metadata.json` — GNOME Shell extension (ESM,
   GNOME 46+) registering a search provider that *augments* Shell
   search: GNOME's providers keep the app lane; ours adds
+  - **"Ask Lisa" (assistant handoff)**: every query ≥ 2 chars gets an
+    entry that hides the overview and calls `Summon(query)` on
+    `org.lisa.Overlay1.UI` — the overlay frontend opens with the prompt
+    already submitted (Spotlight-style; promoted above file hits when
+    the query reads like a question). Icon: bundled `lisa-mark.svg`;
   - **calculator/unit answers**: conservative routing heuristic →
     `qalc -t` subprocess → answer as the first result (Enter copies);
   - **file hits**: `lisa context search` (Context Fabric FTS5, PLAN

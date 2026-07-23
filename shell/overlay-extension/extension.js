@@ -2,10 +2,12 @@
 //
 // Thin by design: all state and token streams live in the headless
 // backend (org.lisa.Overlay1, backend/lisa-overlayd.js); this
-// extension renders it. Summon with Super+Space: a translucent layer
-// over the current workspace with the three per-invocation context
-// chips — [this window], [selection], [my stuff] — a prompt entry, and
-// the streamed answer. Escape cancels/dismisses.
+// extension renders it. Summon with Super+Space — or programmatically
+// via org.lisa.Overlay1.UI (the §5.7.2 launcher's "Ask Lisa" lane
+// hands queries over here): a translucent layer over the current
+// workspace with the three per-invocation context chips —
+// [this window], [selection], [my stuff] — a prompt entry, and the
+// streamed answer. Escape cancels/dismisses.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -18,7 +20,8 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {OVERLAY_IFACE_XML, OVERLAY_BUS_NAME, OVERLAY_OBJECT_PATH}
+import {OVERLAY_IFACE_XML, OVERLAY_BUS_NAME, OVERLAY_OBJECT_PATH,
+    OVERLAY_UI_IFACE_XML, OVERLAY_UI_BUS_NAME, OVERLAY_UI_OBJECT_PATH}
     from './lib/iface.js';
 
 const OverlayProxy = Gio.DBusProxy.makeProxyWrapper(OVERLAY_IFACE_XML);
@@ -91,6 +94,27 @@ class OverlayWidget extends St.BoxLayout {
 
     focusEntry() {
         this._entry.grab_key_focus();
+    }
+
+    // --- summon support (org.lisa.Overlay1.UI) ---------------------------
+
+    setPrompt(text) {
+        this._entry.set_text(text);
+        this._entry.grab_key_focus();
+        this._entry.clutter_text.set_cursor_position(-1);
+    }
+
+    applyChips(state) {
+        for (const [id, checked] of Object.entries(state)) {
+            if (!(id in this._chipState))
+                continue;
+            this._chipState[id] = checked;
+            this._chips[id]?.set_checked(checked);
+        }
+    }
+
+    submit() {
+        this._ask();
     }
 
     cancelActive() {
@@ -171,10 +195,33 @@ export default class LisaOverlayExtension extends Extension {
             Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
             () => this._toggle());
+
+        // UI-control surface (org.lisa.Overlay1.UI): other shell
+        // surfaces — the §5.7.2 launcher's "Ask Lisa" lane — summon
+        // this overlay with a prompt. Owned by the frontend because
+        // the headless backend has no UI; the wlr client can own the
+        // same name.
+        this._uiImpl = Gio.DBusExportedObject.wrapJSObject(OVERLAY_UI_IFACE_XML, {
+            Summon: (prompt, options) => this._summon(prompt, options),
+            Hide: () => this._hide(),
+            GetVisible: () => this._overlay !== null,
+        });
+        this._uiImpl.export(Gio.DBus.session, OVERLAY_UI_OBJECT_PATH);
+        this._uiOwnerId = Gio.bus_own_name_on_connection(
+            Gio.DBus.session, OVERLAY_UI_BUS_NAME,
+            Gio.BusNameOwnerFlags.NONE, null, null);
     }
 
     disable() {
         Main.wm.removeKeybinding('toggle-overlay');
+        if (this._uiOwnerId) {
+            Gio.bus_unown_name(this._uiOwnerId);
+            this._uiOwnerId = 0;
+        }
+        if (this._uiImpl) {
+            this._uiImpl.unexport();
+            this._uiImpl = null;
+        }
         this._hide();
         this._proxy = null;
         this._settings = null;
@@ -194,6 +241,28 @@ export default class LisaOverlayExtension extends Extension {
             this._hide();
         else
             this._show();
+    }
+
+    // org.lisa.Overlay1.UI.Summon: show the layer (if hidden), preset
+    // any chip toggles the caller passed, and submit a non-empty
+    // prompt straight away — a live stream is replaced, matching the
+    // launcher's "new query wins" behavior. Empty prompt = plain show.
+    _summon(prompt, options) {
+        if (!this._overlay)
+            this._show();
+        const chips = {};
+        for (const key of ['my_stuff', 'window', 'selection']) {
+            const v = options?.[key];
+            if (v === undefined)
+                continue;
+            chips[key] = v instanceof GLib.Variant ? v.recursiveUnpack() : Boolean(v);
+        }
+        this._overlay.applyChips(chips);
+        this._overlay.setPrompt(prompt);
+        if (prompt.trim() !== '') {
+            this._overlay.cancelActive();
+            this._overlay.submit();
+        }
     }
 
     _show() {
