@@ -40,3 +40,4 @@ What gets easier, what gets harder, what we gave up.
 - [ADR-0008](0008-portal-standalone-service.md) — Portal is a standalone session service; consent stays in the shell
 - [ADR-0009](0009-agent-bus-core.md) — Agent Bus core: `org.lisa.Agent1`, tier enforcement at the bus, staged MCP transport
 - [ADR-0010](0010-remote-providers.md) — BYO remote providers via the `lisa-remoted` egress broker
+- [ADR-0011](0011-ambient-assistant.md) — Lisa Ambient: always-on, wake-word-free, on-device, ledgered
