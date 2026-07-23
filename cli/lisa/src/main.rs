@@ -6,6 +6,8 @@
 //! library). `tools`/`call`/`undo`/`ledger` are declared now and land with
 //! the Agent Bus in M5.
 
+mod voice;
+
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use lisa_modeld::{ModelStore, fetch};
@@ -110,6 +112,19 @@ enum Command {
         #[command(subcommand)]
         cmd: RemoteCmd,
     },
+    /// Transcribe an audio file with whisper.cpp (STT, §5.7.5).
+    Transcribe {
+        audio: PathBuf,
+        #[arg(long)]
+        model: Option<PathBuf>,
+    },
+    /// Speak text with the local voice (piper / say) (TTS, §5.7.5).
+    Say { text: Vec<String> },
+    /// Lisa Ambient: the voice loop (ADR-0011).
+    Ambient {
+        #[command(subcommand)]
+        cmd: AmbientCmd,
+    },
     /// Embed text into a vector (reads stdin when piped).
     Embed {
         text: Vec<String>,
@@ -119,6 +134,39 @@ enum Command {
             env = "LISA_INFERENCE_URL"
         )]
         url: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AmbientCmd {
+    /// Decide whether an utterance was addressed to Lisa (no wake word).
+    Classify {
+        text: Vec<String>,
+        #[arg(
+            long,
+            default_value = "http://127.0.0.1:7777",
+            env = "LISA_INFERENCE_URL"
+        )]
+        url: String,
+    },
+    /// Full loop on one audio file: transcribe → classify → answer → say.
+    Once {
+        audio: PathBuf,
+        #[arg(long)]
+        model: Option<PathBuf>,
+        #[arg(
+            long,
+            default_value = "http://127.0.0.1:7777",
+            env = "LISA_INFERENCE_URL"
+        )]
+        url: String,
+        /// Speak the answer aloud.
+        #[arg(long)]
+        speak: bool,
+        /// Phase-2: gate on the addressed-intent classifier instead of
+        /// the "Hey Lisa" wake word (over-triggers on small models).
+        #[arg(long)]
+        classify: bool,
     },
 }
 
@@ -251,6 +299,13 @@ fn run() -> anyhow::Result<()> {
         Command::Install { target, from, yes } => install_cmd(&target, from, yes),
         Command::Update { reboot } => update_cmd(reboot),
         Command::Remote { cmd } => remote_cmd(cmd),
+        Command::Transcribe { audio, model } => {
+            let m = voice::whisper_model(model)?;
+            println!("{}", voice::transcribe(&audio, &m)?);
+            Ok(())
+        }
+        Command::Say { text } => voice::say(&text.join(" ")),
+        Command::Ambient { cmd } => ambient_cmd(cmd),
         Command::Context { cmd } => context_cmd(cmd),
         Command::Memory { cmd, app } => memory_cmd(cmd, &app),
     }
@@ -427,6 +482,61 @@ fn install_cmd(target: &PathBuf, from: Option<PathBuf>, yes: bool) -> anyhow::Re
         written as f64 / (1u64 << 30) as f64,
         target.display()
     );
+    Ok(())
+}
+
+fn ambient_cmd(cmd: AmbientCmd) -> anyhow::Result<()> {
+    match cmd {
+        AmbientCmd::Classify { text, url } => {
+            let a = voice::classify_addressed(&text.join(" "), &url)?;
+            println!(
+                "addressed={} confidence={:.2} intent={:?}",
+                a.addressed, a.confidence, a.intent
+            );
+        }
+        AmbientCmd::Once {
+            audio,
+            model,
+            url,
+            speak,
+            classify,
+        } => {
+            let m = voice::whisper_model(model)?;
+            let transcript = voice::transcribe(&audio, &m)?;
+            println!("heard:  {transcript}");
+            // Default: "Hey Lisa" wake word (reliable). --classify uses
+            // the Phase-2 addressed-intent model gate.
+            let query = if classify {
+                let a = voice::classify_addressed(&transcript, &url)?;
+                println!(
+                    "decide: addressed={} confidence={:.2} intent={:?}",
+                    a.addressed, a.confidence, a.intent
+                );
+                if a.addressed {
+                    Some(transcript.clone())
+                } else {
+                    None
+                }
+            } else {
+                match voice::wake_word(&transcript) {
+                    Some(q) => {
+                        println!("decide: wake word \"Hey Lisa\" heard");
+                        Some(q)
+                    }
+                    None => None,
+                }
+            };
+            let Some(query) = query else {
+                println!("(not addressed to Lisa — staying quiet)");
+                return Ok(());
+            };
+            let reply = voice::answer(&query, &url)?;
+            println!("Lisa:   {reply}");
+            if speak {
+                voice::say(&reply)?;
+            }
+        }
+    }
     Ok(())
 }
 

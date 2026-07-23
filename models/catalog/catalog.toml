@@ -9,6 +9,18 @@
 catalog_version = 1
 
 [[model]]
+# STT for voice/Ambient (§5.7.5, ADR-0011). whisper.cpp ggml format.
+id = "whisper-base-en"
+task = "asr"
+tiers = [0, 1, 2, 3, 4]
+license = "MIT"
+engine = "whisper-cpp"
+source = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+blake3 = "be283aece4a0efa1e4f2a74b0db6b9f7ca97d40ed71e6e3810293b0d11dd0955"
+min_ram_gb = 1
+notes = "English STT, ~141 MiB. Verified transcribes 2026-07-23. Resolves as the 'whisper' ref for lisa transcribe / ambient."
+
+[[model]]
 # On-device chat model with a verified load. Gemma's license is
 # weights-available but restrictive — a clearly-labeled option, never a
 # silent default (PLAN §7). ~1 GiB, runs on the tier-0 floor.

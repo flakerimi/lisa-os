@@ -5,6 +5,7 @@
 //! grammar module; sessions, tasks, and memory bindings land in M2.
 
 pub mod grammar;
+pub mod tasks;
 
 /// SDK version, mirrored into the D-Bus and HTTP surfaces.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

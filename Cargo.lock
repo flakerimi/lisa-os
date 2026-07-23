@@ -1192,6 +1192,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "clap",
+ "liblisa",
  "lisa-contextd",
  "lisa-ledger",
  "lisa-modeld",

@@ -46,9 +46,13 @@ VAD-gated locally, and **the system model classifies whether a
 completed utterance was addressed to Lisa** — grammar-constrained to
 `{addressed, confidence, intent}` (guided generation, §5.6). Speaking
 *near* Lisa is not speaking *to* Lisa; the classifier is what tells them
-apart. Wake-word mode (openWakeWord) remains available as a
-lower-power / higher-precision option and the default until Ambient's
-false-accept rate is measured acceptable on real hardware.
+apart. Wake-word mode (openWakeWord, **"Hey Lisa"**) is the shipping default
+(owner-confirmed 2026-07-23) — reliable, low-power, and privacy-obvious;
+the wake-word-*free* addressed-intent classifier is **Phase 2**, enabled
+once its false-accept rate is measured acceptable on real hardware. The
+classifier is built now (`liblisa::tasks::addressed_intent`) and also
+serves a useful role *inside* a wake-word turn: disambiguating follow-up
+speech without re-triggering the wake word.
 
 ### Privacy as mechanism (non-negotiable invariants)
 
