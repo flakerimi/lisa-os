@@ -1,0 +1,130 @@
+# Lisa OS — design brief / prompt
+
+Paste the block below into Claude (with Artifacts on) or hand it to a
+designer to start on Lisa OS interfaces. It carries the full brand system.
+Keep it in sync with `branding/` and `docs/VISION.md`.
+
+---
+
+## PROMPT (copy from here)
+
+You are designing the interface language for **Lisa OS** — an AI-native
+Linux desktop where intelligence is a built-in system service, everything
+runs **locally by default**, nothing leaves the machine without explicit
+consent, and every AI action is recorded in a plain-English audit log.
+The feeling to aim for: **"Her, but yours"** — the warmth and intimacy of
+a personal assistant, without the cloud, without leaving home. A computer
+that's genuinely *yours* to think with. Calm, warm, human — never cold,
+corporate, or sci-fi.
+
+Design a cohesive **design system + key screens**. Deliver theme-aware
+(light **and** dark) high-fidelity mockups as self-contained HTML/CSS
+artifacts, plus a documented token sheet. Favor restraint over decoration
+(elementary-OS / GNOME-native sensibility): generous whitespace, one clear
+action per view, quiet color, humane copy.
+
+### Brand foundations
+
+**Logo.** A warm "presence" — a softly-lit orb on a rounded-square
+(squircle) in a coral gradient. It reads as a gentle companion that lives
+on your hardware, not a broadcast/signal. Wordmark: "**Lisa**" in ink +
+"**OS**" in coral. (Assets exist as `lisa-mark.svg` / `lisa-wordmark.svg`.)
+
+**Color tokens** (starting system — refine, but keep the warmth and the
+reserved amber):
+
+Brand
+- Coral 300 `#FF9E7A`  — gradient top, soft accents
+- Coral 500 `#EE5B3B`  — PRIMARY brand, buttons, the "OS" in the wordmark
+- Coral 700 `#C8431F`  — pressed / on-light emphasis
+
+Warm neutrals (the UI is built from these — warm-tinted, never cold gray)
+- Ink 900 `#2B2320`    — primary text on light
+- Ink 700 `#4A423D`
+- Ink 500 `#6E635C`    — secondary text
+- Ink 300 `#9A8F88`    — tertiary / captions
+- Line 200 `#E7DED8`   — borders, dividers
+- Warm White `#FFF1E9` — the orb, on-dark text
+- Paper `#FAF7F5`      — light app background
+- Surface `#FFFFFF`    — light cards
+
+Dark surfaces
+- Base `#1B1917` · Elevated `#262220` · Card `#302B28` · Line `#3C3531`
+  · text primary `#FFF1E9`, secondary `#B7ABA3`
+
+Semantic (warm-leaning, use sparingly)
+- Success `#3E9B6B` · Warning `#E0A030` · Error `#D6453C` · Info `#4A7DB0`
+
+**RESERVED — do not use for brand or generic UI:**
+- Egress amber `#E66100` means exactly one thing: **"this leaves your
+  hardware."** It marks any remote/offload action and its consent toggles.
+  It must never blend into the brand coral — keep them visibly distinct so
+  the warning always reads as a warning.
+
+**Typography.** System-native sans (Cantarell on GNOME; SF/Segoe
+fallback). Restrained scale, tight display headings, comfortable body.
+Numerals and code in a mono (e.g., the Ledger, model ids). No decorative
+faces.
+
+**Motion.** Gentle, brief, purposeful — a soft "listening" pulse for the
+assistant, calm cross-fades, no bounce/flash. Nothing that reads as
+surveillance or hype.
+
+**Iconography.** GNOME symbolic style (monoline, 16px grid) for UI;
+the coral mark only for the OS/brand.
+
+### Principles
+
+1. **Local by default, legible always.** Anything that could leave the
+   machine is amber and consented; the default state is "Nothing leaves
+   this machine." Provenance (where a piece of context came from) is
+   visible, not hidden.
+2. **One voice.** The assistant, the shell, and first-party apps feel like
+   one designed thing (tokens-first — every surface reads the same theme).
+3. **Humane, not clever.** Plain words, honest states ("alpha — here's
+   what works"), no dark patterns, no fake urgency.
+4. **Accessible.** WCAG AA contrast (body text on Ink, not coral);
+   full keyboard paths; light + dark parity.
+
+### Screens to design (priority order)
+
+1. **Assistant overlay** — a Spotlight-style summon (a warm, calm chat
+   surface over the desktop): idle prompt, a streaming answer, an
+   attached-context chip with provenance, and the amber "this would use a
+   provider" moment. The signature surface.
+2. **Ambient / voice** — the always-on-but-quiet states: idle, wake
+   ("Hey Lisa"), listening pulse, answering, and a visible **hard mute**.
+   Must feel companionable, never like a hot mic.
+3. **Settings › Intelligence** — the AI panel (native GNOME/libadwaita):
+   **Local models** (what runs on this machine, fit badges, one-click
+   Get) and **Providers & privacy** (bring-your-own accounts, keys, and
+   the amber per-scope "may leave this machine" switches).
+4. **Semantic launcher** — type-to-find apps/actions/answers; the calc
+   and unit lanes; a result that's an assistant answer.
+5. **Ledger app** — the plain-English audit log: every model call,
+   context grant, tool run — filterable, honest, reassuring not scary.
+6. **Consent / permission chips** — the portal moment an app asks to read
+   files/mail/screen; per-scope, revocable, provenance-clear.
+7. **First-boot (OOBE)** — warm welcome, language/time, the one honest
+   privacy explanation, optional local-model download by hardware tier.
+8. **First-party apps** — Notes + Recorder as reference apps that show the
+   design system (AI-native widgets: streaming text, consent chip, context
+   attachment, voice input, ledger badge).
+9. **lisaos.app landing** — the marketing hero (mark + "A computer that's
+   genuinely yours to think with"), three pillars (local / private /
+   yours), screenshots, one **Get Lisa OS** CTA.
+
+### Platform notes
+
+- Desktop surfaces target **GTK4 + libadwaita** visuals (GNOME 50); match
+  its layout grammar (header bars, preference groups, rows, toolbars).
+- A parallel **Flutter design system** (`lisa_ui`, core widgets only, no
+  Material/Cupertino) mirrors the same tokens for first-party apps.
+- Everything ships **light and dark**; the theme is one token source read
+  by GTK, the shell, and Flutter alike.
+
+Deliver: (a) a token/color/type sheet, (b) the assistant overlay + ambient
++ Intelligence panel as polished light/dark mockups first, then the rest.
+Explain the choices briefly. Keep it warm, quiet, and unmistakably Lisa.
+
+## (end prompt)

@@ -25,7 +25,10 @@ external use so it renders identically everywhere.
 | Ink | `#2B2320` | wordmark text, on-light foreground |
 | Warm White | `#FFF1E9` | the orb, on-dark surfaces |
 
-`ANSI_COLOR` in os-release is Lisa Coral (`1;38;2;238;91;59`).
+`ANSI_COLOR` in os-release is Lisa Coral (`1;38;2;238;91;59`). The full UI
+token system (warm neutrals, dark surfaces, semantic colors) and the
+surfaces to design live in [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md) — a
+ready-to-paste prompt for designing Lisa OS interfaces.
 
 **Not** the egress amber (`#E66100`) — that color is reserved, load-bearing:
 it means "leaves your hardware" (ADR-0008, §5.11). Keep the brand coral
