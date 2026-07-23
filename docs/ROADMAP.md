@@ -3,7 +3,7 @@
 Where the whole project stands against `docs/PLAN.md`, and the path from
 here to a real, shippable Lisa. Companion to `docs/STATUS.md` (component
 detail) and `docs/PLAN.md` (scope, source of truth).
-**Updated: 2026-07-23 (overnight full-cycle session — both open PRs landed, providers + hybrid retrieval + Gemma).**
+**Updated: 2026-07-23 (day 2 — Ambient voice loop, LisaCode, SDK tasks; VISION.md added).**
 
 ## The one-paragraph state
 
@@ -28,7 +28,8 @@ with automatic rollback.
 | **M4** Surfaces | 🟠 landed, needs polish | overlay + launcher + Ledger app + fcitx5 running on GNOME/hardware; writing-tools/voice/budgets left |
 | **M5** Agent Bus | 🟠 landed | lisa-agentd on main: MCP manifests, registry, tier enforcement at the bus, undo journal, injection gate ✅; MCP wire transport + `lisa tools/call/undo` verbs left |
 | **§5.11** Remote providers | 🟠 landed | lisa-remoted broker ✅ (openai/anthropic/hf/tinker/together/fireworks + custom), routing ✅, `lisa remote` CLI ✅, hardware-aware fit ✅; image packaging + socket bridge left (Linux-verify) |
-| **M6** Apps + Forge | 🟡 seeds | forge-harness + lisa_ui + lisa_flutter skeletons; app suite + Forge app left |
+| **§5.7.5** Voice / Ambient | 🟠 loop works | STT (whisper) + wake-word ("Hey Lisa") + answer + TTS verified end-to-end (`lisa ambient once`); live-mic capture + on-image packaging left (ADR-0011) |
+| **M6** Apps + Forge | 🟠 loop works | **LisaCode** (`lisa forge`) drives the model→jailed-edit→analyze loop end to end (§5.12.1); lisa_ui + lisa_flutter seeds; GUI Forge + app suite + hot-reload left |
 | **M7** Personal node + installer | 🟡 groundwork | remote broker = PCN groundwork; `lisa install` proto-installer; OOBE + WireGuard pairing left |
 | **M8** Public alpha ISO | 🟡 channel exists | releases publish; docs site + eval dashboard + security review left |
 
@@ -89,9 +90,30 @@ egress ledgered in the "leaves your hardware" marking.
   (graphical.target), NetworkManager auto-enabled, Settings app shipped,
   openssh for headless access.
 
+### Done this session (2026-07-23, day 2)
+- ✅ **Vision + Ambient**: `docs/VISION.md` (the "Her, but yours" north
+  star) + ADR-0011 (always-on, wake-word-free-*capable*, on-device,
+  ledgered — "Hey Lisa" is the confirmed default).
+- ✅ **Voice loop, live**: `lisa transcribe` (whisper.cpp), `lisa say`,
+  `lisa ambient once` — verified end to end on real audio + Gemma:
+  "Hey Lisa, capital of France?" → Paris; a pizza aside → stays quiet.
+  whisper-base-en pinned. (Honest finding: the addressed-intent
+  classifier over-triggers on a 1B model → wake word is the right
+  default; Phase-2 needs a bigger model + a false-accept eval gate.)
+- ✅ **LisaCode** (`lisa forge`): the Forge loop runs end to end against a
+  live model, tool jail proven (rejects bad paths, feeds them back);
+  quality is model-bound (§5.12.1 coder-model / BYO-agent tiering).
+- ✅ **SDK**: `liblisa::tasks` (extract/classify/summarize) + the
+  recipe-extractor sample (§5.6 acceptance: <40 lines, stock OpenAI
+  client, verified live). Model aliases (`lisa`/`default`) so callers
+  needn't know the exact id.
+
 ### Deferred (needs Linux verification, not done blind)
 - Package `lisa-remoted` + Settings into the image + the cross-daemon
   socket bridge (design in `daemons/remoted/README.md`).
+- Build whisper.cpp + piper from source into the image (not in Arch
+  repos) so voice works on the device.
+- The Spotlight-style right-⌘ overlay summon (GNOME keybinding).
 - `lisa tools/call/undo` verbs over `org.lisa.Agent1` (async D-Bus
   client in the CLI).
 
