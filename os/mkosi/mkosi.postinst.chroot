@@ -104,6 +104,15 @@ if [ -f /usr/lib/systemd/system/NetworkManager.service ]; then
     systemctl enable NetworkManager.service || true
     systemctl enable systemd-resolved.service || true
     systemctl enable iwd.service 2>/dev/null || true
+    # Persist Wi-Fi across A/B updates: NetworkManager writes profiles to
+    # /etc/NetworkManager/system-connections, which is per-slot (lost on
+    # update). Redirect it to the persistent /var partition (dir created by
+    # tmpfiles.d/lisa-network-persist.conf), so a saved Wi-Fi survives.
+    if [ -d /etc/NetworkManager ]; then
+        rm -rf /etc/NetworkManager/system-connections
+        ln -sfn /var/lib/NetworkManager/system-connections \
+            /etc/NetworkManager/system-connections
+    fi
 elif [ -f /etc/systemd/network/80-dhcp.network ]; then
     systemctl enable systemd-networkd.service systemd-resolved.service
 fi

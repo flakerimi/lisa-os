@@ -16,8 +16,8 @@ geometric-humanist wordmark, no icon needed. It ships in two fills:
 `lisa-wordmark.svg` (violet `#4F378B`, for light backgrounds) and
 `lisa-wordmark-white.svg` (reversed, for dark/violet backgrounds — use
 white whenever the wordmark sits on color). `lisa-mark.svg` is the **L
-monogram** (white L on a violet tile) for the slots a wordmark can't fit:
-favicon, os-release logo, app grid.
+monogram** (white L on a violet tile) for square icon slots (favicon, app
+grid). The os-release logo (Settings > About) uses the **wordmark**.
 
 ## Palette (core)
 
