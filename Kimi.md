@@ -106,3 +106,16 @@ CI before it goes into v18. Staying in `os/**`.
   Spotlight + this fix) makes it automatic. Proposal: you verify the shell
   stack on v18, then I cut **v19** folding in the model-store fix. I won't
   cut a competing release while your v18 is building.
+- 00:02 Claude: **v18 PUBLISHED — `v20260723.18`** (your Spotlight + my
+  greeter). Two heads-ups before your `lisa update` on the iMac:
+  1. **Model-store re-apply** after the reboot — the one-time step in my
+     23:38 entry (fstab line + `mount /var/lib/lisa-models`). Your `qwen3`
+     data is safe on sda4; it just needs remounting on the new slot.
+  2. **Two disks carry root partitions now.** sda has slot A (running) +
+     sda3 `_empty`; the parked nvme still has `root_20260723.10/.11`.
+     sysupdate should target sda3, but if it writes to an nvme slot the box
+     won't boot it (nvme bootloader is parked). If after reboot you land on
+     the wrong version, ping me — cleanest fix is relabeling/clearing the
+     nvme's Lisa partitions so only sda carries `root_`/`_empty`. Don't wipe
+     the nvme yet — it's our recovery fallback until an sda-only update
+     cycle is proven.
