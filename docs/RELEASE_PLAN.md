@@ -57,11 +57,13 @@ Settings, see **Intelligence**, and Local models populate.
    `lisa-shell` package (install `lisa-settings.js` + `lib/` + the
    `org.lisa.Settings.desktop`). Without it, the native panel's
    "Manage providers" bridge has no target. *Small, low-risk.*
-2. **Build + wire the g-c-c fork** — a CI job runs `makepkg` for
-   `os/packages/gnome-control-center-lisa` (x86 Arch) and publishes it to
-   the Lisa pacman repo layered above `[extra]`. Image then carries our
-   Settings automatically. *Medium; the x86 makepkg is the real gate the
-   arm64 compile-check can't be.*
+2. **Build + wire the g-c-c fork** — the CI `gnome-panel-build` job runs
+   `makepkg` for `os/packages/gnome-control-center-lisa` (x86 Arch).
+   ✅ **Build is green** (2026-07-23): the full g-c-c + our panel compile
+   and link, and the package contains the Intelligence `.desktop`.
+   Remaining: publish the built package to the Lisa pacman repo layered
+   above `[extra]` so the image carries our Settings automatically (the
+   release pipeline builds + repo-adds it).
 3. **Package `lisa-remoted`** — add it to the `lisa` PKGBUILD `pkgname`
    set + a socket unit, so Providers actually work (not just the local
    models). Deferred (ADR-0008 socket bridge, Linux-verify). If it slips,
