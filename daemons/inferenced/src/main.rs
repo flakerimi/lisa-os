@@ -64,12 +64,21 @@ async fn main() -> anyhow::Result<()> {
         None => {}
     }
 
-    let engines: Arc<dyn EngineProvider> = match cfg.engine {
-        EngineKind::Stub => Arc::new(SingleEngine {
-            engine: Arc::new(StubEngine),
-            name: "lisa-system-stub".to_string(),
-        }),
-        EngineKind::Llama => {
+    // Decide the effective engine. `--engine llama` still falls back to the
+    // stub when there's nothing to serve — no model in the store yet, or no
+    // llama-server on PATH (the Track-L layer ships no engine; a fresh image
+    // boots with an empty store). This keeps `lisa ask` a working round-trip
+    // until a model is downloaded and the daemon restarts to pick it up.
+    let llama_ready = cfg.engine == EngineKind::Llama
+        && match llama_refs_and_default(&cfg.llama) {
+            Ok((ref dir, _)) => {
+                config::first_model_in(dir).is_some() && binary_on_path(&cfg.llama.server_bin)
+            }
+            Err(_) => false,
+        };
+
+    let (engines, model_name, engine_kind): (Arc<dyn EngineProvider>, String, String) =
+        if llama_ready {
             let (refs_dir, default_model) = llama_refs_and_default(&cfg.llama)?;
             info!(
                 dir = %refs_dir.display(),
@@ -77,10 +86,10 @@ async fn main() -> anyhow::Result<()> {
                 "llama engine serving the model store"
             );
             let base = cfg.llama.clone();
-            // One supervised llama-server child per resident model,
-            // lazily spawned, LRU-evicted beyond max_resident (§5.1).
-            Arc::new(ModelPool::new(
-                default_model,
+            // One supervised llama-server child per resident model, lazily
+            // spawned, LRU-evicted beyond max_resident (§5.1).
+            let pool = ModelPool::new(
+                default_model.clone(),
                 refs_dir,
                 base.port,
                 base.max_resident,
@@ -90,9 +99,25 @@ async fn main() -> anyhow::Result<()> {
                     child_cfg.port = port;
                     Ok(Arc::new(llama::LlamaEngine::new(child_cfg)))
                 }),
-            ))
-        }
-    };
+            );
+            (Arc::new(pool), default_model, "llama".to_string())
+        } else {
+            if cfg.engine == EngineKind::Llama {
+                warn!(
+                    "llama engine requested but no servable model / no llama-server \
+                     on PATH — serving the stub (download a model in Settings, then \
+                     `systemctl restart lisa-inferenced`)"
+                );
+            }
+            (
+                Arc::new(SingleEngine {
+                    engine: Arc::new(StubEngine),
+                    name: "lisa-system-stub".to_string(),
+                }),
+                "lisa-system-stub".to_string(),
+                "stub".to_string(),
+            )
+        };
     // Wrap the local provider so `remote:<provider>:<model>` names route
     // to the lisa-remoted broker (§5.11); local models pass through
     // unchanged. inferenced stays network-free — the broker owns egress.
@@ -120,16 +145,6 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    let model_name = match cfg.engine {
-        EngineKind::Stub => "lisa-system-stub".to_string(),
-        EngineKind::Llama => llama_refs_and_default(&cfg.llama)
-            .map(|(_, name)| name)
-            .unwrap_or_else(|_| "lisa-system".to_string()),
-    };
-    let engine_kind = match cfg.engine {
-        EngineKind::Stub => "stub".to_string(),
-        EngineKind::Llama => "llama".to_string(),
-    };
     // No ledger, no inference (PLAN §4 rule 4): refuse to serve at all
     // if the audit log cannot be opened.
     let ledger_path = std::env::var_os("LISA_LEDGER_DB")
@@ -155,6 +170,18 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
     Ok(())
+}
+
+/// Is the given binary runnable — an absolute path that exists, or a bare
+/// name found on `$PATH`? Used to decide whether the llama engine can serve
+/// (Track-L layers ship no llama-server) before spawning a doomed child.
+fn binary_on_path(bin: &std::path::Path) -> bool {
+    if bin.is_absolute() || bin.components().count() > 1 {
+        return bin.exists();
+    }
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
+        .unwrap_or(false)
 }
 
 /// Resolve the llama engine's (refs_dir, default_model) from config:
