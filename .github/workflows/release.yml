@@ -52,15 +52,15 @@ jobs:
               sudo -u builder bash -c "cd /build/os/packages/llama.cpp && makepkg --nocheck --skippgpcheck --noconfirm"
               cp /build/os/packages/llama.cpp/llama.cpp-*.pkg.tar.* /build/repo-out/
               # Zen browser — repackage the upstream release tarball. -d:
-              # it's a binary repackage, so its runtime deps (gtk3/nss/…)
+              # it is a binary repackage, so its runtime deps gtk3/nss/etc
               # need not be installed in the build container to package it;
               # pacman satisfies them at image-install time.
               sudo -u builder bash -c "cd /build/os/packages/zen-browser && makepkg -d --nocheck --noconfirm"
               cp /build/os/packages/zen-browser/zen-browser-*.pkg.tar.* /build/repo-out/
               # Our forked gnome-control-center: stock 50.3 + the native
               # Intelligence panel (ADR-0012). -s installs its makedepends;
-              # it takes the gnome-control-center name so the local repo's
-              # precedence installs it instead of Arch's stock package.
+              # it takes the gnome-control-center name so the local repo
+              # precedence installs it instead of the stock Arch package.
               sudo -u builder bash -c "cd /build/os/packages/gnome-control-center-lisa && makepkg -s --nocheck --skippgpcheck --noconfirm"
               cp $(ls /build/os/packages/gnome-control-center-lisa/*.pkg.tar.* | grep -v -- -debug-) /build/repo-out/
               # Reclaim disk before the image build — the llama.cpp and
