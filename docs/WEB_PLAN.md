@@ -26,7 +26,7 @@ to `.app` for the pitch.
   single CTA: **Get Lisa OS** → `lisaos.dev/download` (+ GitHub, + an
   optional email/waitlist).
 - **Tone:** warm, restrained, elementary-inspired (design-direction note).
-  Uses the brand kit (`branding/`) — Lisa Indigo, the mark, the wordmark.
+  Uses the brand kit (`branding/`) — Lisa Violet, the wordmark (+ L monogram).
 - **Tech:** a single static page to start (self-contained HTML, no
   framework — I can produce this now as an Artifact from the branding).
   Grows into Astro if it needs more pages. Host: GitHub Pages or

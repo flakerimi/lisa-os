@@ -25,21 +25,22 @@ action per view, quiet color, humane copy.
 
 ### Brand foundations
 
-**Logo.** A warm "presence" — a softly-lit orb — held in a rounded-square
-(squircle) with an **indigo** gradient: calm intelligence cradling a warm
-companion that lives on your hardware, not a broadcast/signal. Wordmark:
-"**Lisa**" in ink + "**OS**" in indigo. (Assets: `lisa-mark.svg` /
-`lisa-wordmark.svg`.)
+**Logo — wordmark-first.** The identity is the **"Lisa" logotype** itself
+(a clean geometric-humanist wordmark), not an icon. It ships in violet
+(`lisa-wordmark.svg`) and reversed white (`lisa-wordmark-white.svg`) —
+use white whenever it sits on violet/dark. For icon-only slots (favicon,
+os-release logo, app grid) there's an **L monogram** tile
+(`lisa-mark.svg`: white L on a violet squircle). No orb.
 
 **Color tokens** (starting system — refine, but keep the warmth and the
 reserved amber):
 
-Brand — indigo (calm intelligence). This is the UI/primary color.
-- Indigo 300 `#6D63FF`  — gradient top, hovers, soft accents
-- Indigo 500 `#4F46E5`  — PRIMARY brand, buttons, the "OS" in the wordmark
-- Indigo 700 `#4338CA`  — pressed, gradient base
-- Warm Orb  `#FFD3B8`→`#FFF` — the logo orb only (identity warmth). Do NOT
-  use orange as a UI accent — it must not compete with the reserved amber.
+Brand — violet (two steps, one family). Deep for identity, livelier for UI.
+- Violet 700 `#4F378B`  — BRAND / the wordmark / deep surfaces
+- Violet 500 `#6D45C9`  — PRIMARY UI: buttons, toggles, links, the L tile
+- Violet 300 `#9B7BE8`  — hovers, gradient top, soft accents
+- The wordmark reverses to WHITE on violet/dark. Do NOT use orange as a UI
+  accent — it must not compete with the reserved amber.
 
 Warm neutrals (the UI is built from these — warm-tinted, never cold gray)
 - Ink 900 `#2B2320`    — primary text on light
@@ -47,7 +48,7 @@ Warm neutrals (the UI is built from these — warm-tinted, never cold gray)
 - Ink 500 `#6E635C`    — secondary text
 - Ink 300 `#9A8F88`    — tertiary / captions
 - Line 200 `#E7DED8`   — borders, dividers
-- Warm White `#FFF1E9` — the orb, on-dark text
+- Warm White `#FFF1E9` — on-dark text, warm surfaces
 - Paper `#FAF7F5`      — light app background
 - Surface `#FFFFFF`    — light cards
 
@@ -61,20 +62,27 @@ Semantic (warm-leaning, use sparingly)
 **RESERVED — do not use for brand or generic UI:**
 - Egress amber `#E66100` means exactly one thing: **"this leaves your
   hardware."** It marks any remote/offload action and its consent toggles.
-  It must never read as a brand color — the indigo brand already sits far
+  It must never read as a brand color — the violet brand already sits far
   from it, so the warning always reads as a warning. Keep it that way.
 
-**Typography.** System-native sans (Cantarell on GNOME; SF/Segoe
-fallback). Restrained scale, tight display headings, comfortable body.
-Numerals and code in a mono (e.g., the Ledger, model ids). No decorative
-faces.
+**Typography.**
+- *Wordmark / display headings:* a geometric-humanist sans with a
+  single-story round *a* (the wordmark's own face — Jost / Poppins family).
+  Tight tracking at large sizes.
+- *UI + body* (the interface, docs, web body): **Inter** — humanist,
+  legible, set as the GNOME UI font. (Cantarell is the zero-config
+  fallback.) Geometric faces are for headlines, never long body text.
+- *Mono* (Ledger, code, model ids): **JetBrains Mono** (Noto Sans Mono
+  ships as fallback).
+
+All OFL/open — shippable in the image.
 
 **Motion.** Gentle, brief, purposeful — a soft "listening" pulse for the
 assistant, calm cross-fades, no bounce/flash. Nothing that reads as
 surveillance or hype.
 
 **Iconography.** GNOME symbolic style (monoline, 16px grid) for UI;
-the indigo mark only for the OS/brand.
+the violet mark only for the OS/brand.
 
 ### Principles
 

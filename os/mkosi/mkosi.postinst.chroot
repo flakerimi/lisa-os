@@ -37,7 +37,7 @@ if [ -f /usr/lib/os-release ]; then
         -e "s|^SUPPORT_URL=.*|SUPPORT_URL=\"$_repo/issues\"|" \
         -e "s|^BUG_REPORT_URL=.*|BUG_REPORT_URL=\"$_repo/issues\"|" \
         -e 's|^LOGO=.*|LOGO=lisa-logo|' \
-        -e 's|^ANSI_COLOR=.*|ANSI_COLOR="1;38;2;109;99;255"|' \
+        -e 's|^ANSI_COLOR=.*|ANSI_COLOR="1;38;2;109;69;201"|' \
         -e '/^PRIVACY_POLICY_URL=/d' \
         /usr/lib/os-release
     grep -q '^ID_LIKE=' /usr/lib/os-release || \
