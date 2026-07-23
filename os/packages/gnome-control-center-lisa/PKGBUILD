@@ -36,15 +36,16 @@ makedepends=(
 checkdepends=(
   python-dbusmock python-gobject xorg-server-xvfb
 )
-# The panel sources live beside this PKGBUILD (basename lands in $srcdir).
+# The panel sources live beside this PKGBUILD (makepkg resolves local
+# sources by basename in $startdir — no subdirs).
 source=(
   "git+https://gitlab.gnome.org/GNOME/gnome-control-center.git?signed#tag=${pkgver/[a-z]/.&}"
   "git+https://gitlab.gnome.org/GNOME/libgnome-volume-control.git"
   "git+https://gitlab.gnome.org/GNOME/libgxdp.git#commit=1fe6de799f39b3126e8d0db66fa4f16c10fd9bd6"
-  "panel/cc-lisa-panel.h"
-  "panel/cc-lisa-panel.c"
-  "panel/meson.build"
-  "panel/gnome-lisa-panel.desktop.in"
+  "cc-lisa-panel.h"
+  "cc-lisa-panel.c"
+  "cc-lisa-panel-meson.build"
+  "gnome-lisa-panel.desktop.in"
 )
 b2sums=('94d45dc219e1f1e533d66e2cc9ce5daadc8030ccc2466befc7ad3f79ea8fa8928648878c4caf8b0170ea345b8a1bf3d11e14237e37175fa15f97a7fc7d92dde7'
         'SKIP'
@@ -78,7 +79,7 @@ prepare() {
   install -d panels/lisa
   install -m644 "$srcdir"/cc-lisa-panel.h            panels/lisa/cc-lisa-panel.h
   install -m644 "$srcdir"/cc-lisa-panel.c            panels/lisa/cc-lisa-panel.c
-  install -m644 "$srcdir"/meson.build                panels/lisa/meson.build
+  install -m644 "$srcdir"/cc-lisa-panel-meson.build  panels/lisa/meson.build
   install -m644 "$srcdir"/gnome-lisa-panel.desktop.in \
     panels/lisa/gnome-lisa-panel.desktop.in
 

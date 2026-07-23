@@ -25,16 +25,21 @@ CLI); no backend logic is duplicated.
 
 ## Files
 
+Panel sources sit beside the PKGBUILD (makepkg resolves local sources by
+basename in `$startdir` — no subdirs) and `prepare()` copies them into
+`panels/lisa/`:
+
 - `PKGBUILD` — derived from Arch's `gnome-control-center` 50.3-1; the only
-  delta is `source += panel/*` and the `prepare()` injection.
-- `panel/cc-lisa-panel.{h,c}` — the panel (`CcPanel : AdwNavigationPage`,
-  built programmatically — no `.ui`/gresource).
-- `panel/meson.build` — per-panel build (mirrors upstream, minus
-  blueprint/gresource, plus `json-glib`).
-- `panel/gnome-lisa-panel.desktop.in` — id `lisa`, category
+  delta is the four panel sources + the `prepare()` injection.
+- `cc-lisa-panel.{h,c}` — the panel (`CcPanel : AdwNavigationPage`, built
+  programmatically — no `.ui`/gresource) → `panels/lisa/`.
+- `cc-lisa-panel-meson.build` — per-panel build (mirrors upstream, minus
+  blueprint/gresource, plus `json-glib` + `gio-unix-2.0`) →
+  `panels/lisa/meson.build`.
+- `gnome-lisa-panel.desktop.in` — id `lisa`, category
   `X-GNOME-SystemSettings` (System group), search keywords.
 
-`prepare()` copies `panel/` → `panels/lisa/` and applies three anchored
+`prepare()` copies those into `panels/lisa/` and applies three anchored
 edits (guarded — a GNOME bump that moves an anchor fails the build):
 `panels/meson.build` gains `'lisa'`; `shell/cc-panel-loader.c` gains the
 `extern` decl and a `PANEL_TYPE("lisa", …)` row. (The exact edits are
