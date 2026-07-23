@@ -13,6 +13,13 @@
 [org.gnome.shell]
 enabled-extensions=['lisa-overlay@lisa-os.org', 'lisa-launcher@lisa-os.org']
 
+# The Lisa OS interface font: Rubik (a warm, slightly-rounded geometric
+# sans, OFL — shipped under /usr/share/fonts/rubik). Monospace is left at
+# the system default. Overridable per-user in Settings.
+[org.gnome.desktop.interface]
+font-name='Rubik 11'
+document-font-name='Rubik 11'
+
 [org.gnome.desktop.wm.keybindings]
 switch-input-source=['<Shift><Super>space']
 switch-input-source-backward=[]

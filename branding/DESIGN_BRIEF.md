@@ -65,17 +65,12 @@ Semantic (warm-leaning, use sparingly)
   It must never read as a brand color — the violet brand already sits far
   from it, so the warning always reads as a warning. Keep it that way.
 
-**Typography.**
-- *Wordmark / display headings:* a geometric-humanist sans with a
-  single-story round *a* (the wordmark's own face — Jost / Poppins family).
-  Tight tracking at large sizes.
-- *UI + body* (the interface, docs, web body): **Inter** — humanist,
-  legible, set as the GNOME UI font. (Cantarell is the zero-config
-  fallback.) Geometric faces are for headlines, never long body text.
-- *Mono* (Ledger, code, model ids): **JetBrains Mono** (Noto Sans Mono
-  ships as fallback).
-
-All OFL/open — shippable in the image.
+**Typography — Rubik is the OS font.** A warm, slightly-rounded geometric
+sans (OFL, shipped in the image, set as the GNOME UI font). One family
+does the work: UI, body, and headings (heavier weights + tighter tracking
+at display sizes). Mono (Ledger, code, model ids): the system monospace.
+The "Lisa" wordmark keeps its own geometric letterforms — Rubik sits
+comfortably beside it. All OFL/open.
 
 **Motion.** Gentle, brief, purposeful — a soft "listening" pulse for the
 assistant, calm cross-fades, no bounce/flash. Nothing that reads as
