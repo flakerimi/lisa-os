@@ -66,6 +66,26 @@ pinned version, drop in our files, apply guarded anchored edits — see
 fails the build loudly. A fork only earns its own repo if the patch grows
 past "thin."
 
+## Bundled third-party (runtimes & apps)
+
+Not ours, not forked — upstream software shipped in the image so the OS is
+useful out of the box. Official Arch packages go straight in `mkosi.conf`;
+AUR-only ones get a thin PKGBUILD in `os/packages/` built into the release
+repo (like the lisa packages).
+
+| Package | Why | Source | Where |
+|---|---|---|---|
+| `llama.cpp` | local inference engine (llama-server) for inferenced | from source (b10093, MIT) — AUR-only | `os/packages/llama.cpp` → release repo |
+| `dart` | the Forge harness's `dart analyze` loop | Arch `extra` | `mkosi.conf` Packages |
+| `zen-browser` | a real browser out of the box | repackaged release tarball (1.21.8b) | `os/packages/zen-browser` → release repo |
+| **Flutter** | building runnable apps on-device | **on-demand, NOT bundled** | one-time install (decision B, 2026-07-23) |
+
+**Flutter is deliberately not in the image** (it's ~1.5 GiB, and every A/B
+update would carry it). Dart alone keeps the harness's generate→analyze
+loop working; full `flutter build linux` is a one-time on-demand install
+when you actually want to compile an app. (A `lisa`-driven installer is the
+follow-up.)
+
 ## SDK / libraries (pointers)
 
 `libs/`: `liblisa` (+ gtk/qt), `lisa_ui` (Flutter design system),
