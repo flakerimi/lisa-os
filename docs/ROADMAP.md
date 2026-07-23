@@ -24,7 +24,7 @@ with automatic rollback.
 | **M0** Bootstrap | done (polish left) | image builds → boots → A/B update + rollback + sysupdate; release channel live |
 | **M1** Inference core | ✅ done (LoRA + perf left) | real inference, crash recovery, guided-gen 1000/1000, scheduler, D-Bus, embeddings, multi-model residency |
 | **M2** Trust boundary + SDK | 🟠 mostly | portal ✅, Ledger ✅; liblisa guided-gen ✅, sessions/tasks bindings partial |
-| **M3** Context fabric | 🟠 core+hybrid | FTS5 + provenance + per-app memory ✅; embedding pipeline + hybrid (BM25+cosine) retrieval ✅; watchers/sources/scoped-ACL left |
+| **M3** Context fabric | 🟠 core+hybrid+ACL | FTS5 + provenance + per-app memory ✅; embedding pipeline + hybrid (BM25+cosine) retrieval ✅; scoped-ACL retrieval + fuzz (0 cross-scope leaks) ✅; watchers/live sources left |
 | **M4** Surfaces | 🟠 landed, needs polish | overlay + launcher + Ledger app + fcitx5 running on GNOME/hardware; writing-tools/voice/budgets left |
 | **M5** Agent Bus | 🟠 landed | lisa-agentd on main: MCP manifests, registry, tier enforcement at the bus, undo journal, injection gate ✅; MCP wire transport + `lisa tools/call/undo` verbs left |
 | **§5.11** Remote providers | 🟠 landed | lisa-remoted broker ✅ (openai/anthropic/hf/tinker/together/fireworks + custom), routing ✅, `lisa remote` CLI ✅, hardware-aware fit ✅; image packaging + socket bridge left (Linux-verify) |
@@ -91,6 +91,13 @@ egress ledgered in the "leaves your hardware" marking.
   openssh for headless access.
 
 ### Done this session (2026-07-23, day 2)
+- ✅ **Scoped-ACL retrieval** (M3 §5.3 acceptance): `contextd::acl` maps a
+  granted portal scope to allowed provenance and filters *at the query*, so
+  a disallowed chunk can't leak through ranking — a `documents`-scoped
+  search never returns a `mail`/`screen` chunk even when it ranks best.
+  Deny-by-default on empty/unknown scopes. ACL-leak + fuzz tests (0
+  cross-scope leaks) + `lisa context search --scope <scope>` (ledgered as
+  `context.search.scoped`).
 - ✅ **Vision + Ambient**: `docs/VISION.md` (the "Her, but yours" north
   star) + ADR-0011 (always-on, wake-word-free-*capable*, on-device,
   ledgered — "Hey Lisa" is the confirmed default).
@@ -123,10 +130,11 @@ egress ledgered in the "leaves your hardware" marking.
 - Agent Bus follow-ups (agentd landed): MCP wire transport, `libs/mcp-bus`,
   `lisa tools/call/undo` verbs, full 500-attempt injection corpus, first
   first-party app that exposes tools.
-- Context fabric: sqlite-vec at scale, file/mail/calendar sources,
-  watchers, scoped-ACL retrieval + the ACL fuzz suite (0 cross-scope
-  leaks), Settings › Intelligence panel. (Embedding pipeline + hybrid
-  ranking done.)
+- Context fabric: sqlite-vec at scale, file/mail/calendar *live* sources,
+  watchers, Settings › Intelligence panel. (Embedding pipeline + hybrid
+  ranking done; scoped-ACL retrieval + ACL fuzz — 0 cross-scope leaks —
+  done: `search_scoped` maps portal scope → allowed provenance and
+  filters at the query, `lisa context search --scope documents`.)
 - liblisa SDK: session/tasks/memory bindings + the <40-line recipe
   sample; the OpenAI-compat zero-dep path is already documented.
 

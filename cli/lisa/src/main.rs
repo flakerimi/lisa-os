@@ -229,6 +229,11 @@ enum ContextCmd {
         /// Blend BM25 with vector similarity (needs indexed embeddings).
         #[arg(long)]
         hybrid: bool,
+        /// Restrict to the provenance a granted scope permits, e.g.
+        /// `--scope documents` (repeatable). A scoped search never
+        /// returns a disallowed-provenance chunk (PLAN §5.3 ACL).
+        #[arg(long)]
+        scope: Vec<String>,
     },
 }
 
@@ -766,12 +771,15 @@ fn context_cmd(cmd: ContextCmd) -> anyhow::Result<()> {
             query,
             limit,
             hybrid,
+            scope,
         } => {
             let query = query.join(" ");
             // Every retrieval is ledgered (PLAN §5.3) — query hash, not text.
             let ledger = lisa_ledger::Ledger::open(lisa_ledger::Ledger::default_path())?;
             ledger.append(&lisa_ledger::Event {
-                kind: if hybrid {
+                kind: if !scope.is_empty() {
+                    "context.search.scoped"
+                } else if hybrid {
                     "context.search.hybrid"
                 } else {
                     "context.search"
@@ -782,7 +790,10 @@ fn context_cmd(cmd: ContextCmd) -> anyhow::Result<()> {
                 status: "ok".into(),
                 ..Default::default()
             })?;
-            let hits = if hybrid {
+            let hits = if !scope.is_empty() {
+                let scopes: Vec<&str> = scope.iter().map(String::as_str).collect();
+                store.search_scoped(&query, &scopes, limit)?
+            } else if hybrid {
                 store.search_hybrid(
                     &query,
                     &lisa_contextd::embed::HashEmbedder::default(),
