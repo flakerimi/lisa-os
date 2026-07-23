@@ -62,7 +62,10 @@ index/search` (searches ledgered) and `lisa memory get/set/list/wipe`.
 demonstrates **A/B update AND rollback** in CI (boot-counting rollback +
 real systemd-sysupdate into the inactive slot). swtpm in the boot check.
 Track L (`os/layer/`): real packages + install/uninstall proven on
-vanilla Arch (`layer-e2e`).
+vanilla Arch (`layer-e2e`). Branded end to end: GDM greeter + session
+carry the violet accent (GNOME `purple` enum — exact #6D45C9 via CSS is
+open), the white Lisa wordmark on the login screen (`/etc/dconf` gdm db,
+`os/mkosi/mkosi.extra`), and Rubik as the UI font (gschema override).
 
 **Release channel — `.github/workflows/release.yml`:** GitHub Releases
 ARE the sysupdate source. Weekly cron (edge channel) + on-demand;
