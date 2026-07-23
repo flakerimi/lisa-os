@@ -36,8 +36,9 @@ jobs:
               sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
               # glib2: lisa-shell makedepends (build-packages.sh runs
               # makepkg without -s, so makedepends must be preinstalled).
-              # cmake: the llama.cpp (llama-server) engine build.
-              pacman -Syu --noconfirm base-devel rust git mkosi glib2 cmake
+              # cmake: the llama.cpp engine build. devtools: arch-meson,
+              # used by the forked gnome-control-center PKGBUILD.
+              pacman -Syu --noconfirm base-devel rust git mkosi glib2 cmake devtools
 
               # Packages from a clean checkout of HEAD (makepkg refuses root).
               git clone --quiet /src /build
@@ -50,8 +51,11 @@ jobs:
               # from source into the same repo the lisa packages use.
               sudo -u builder bash -c "cd /build/os/packages/llama.cpp && makepkg --nocheck --skippgpcheck --noconfirm"
               cp /build/os/packages/llama.cpp/llama.cpp-*.pkg.tar.* /build/repo-out/
-              # Zen browser — repackage the upstream release tarball.
-              sudo -u builder bash -c "cd /build/os/packages/zen-browser && makepkg --nocheck --skippgpcheck --noconfirm"
+              # Zen browser — repackage the upstream release tarball. -d:
+              # it's a binary repackage, so its runtime deps (gtk3/nss/…)
+              # need not be installed in the build container to package it;
+              # pacman satisfies them at image-install time.
+              sudo -u builder bash -c "cd /build/os/packages/zen-browser && makepkg -d --nocheck --noconfirm"
               cp /build/os/packages/zen-browser/zen-browser-*.pkg.tar.* /build/repo-out/
               # Our forked gnome-control-center: stock 50.3 + the native
               # Intelligence panel (ADR-0012). -s installs its makedepends;
@@ -59,6 +63,11 @@ jobs:
               # precedence installs it instead of Arch's stock package.
               sudo -u builder bash -c "cd /build/os/packages/gnome-control-center-lisa && makepkg -s --nocheck --skippgpcheck --noconfirm"
               cp $(ls /build/os/packages/gnome-control-center-lisa/*.pkg.tar.* | grep -v -- -debug-) /build/repo-out/
+              # Reclaim disk before the image build — the llama.cpp and
+              # gnome-control-center build trees are multi-GB and the runner
+              # has ~14 GB. The built .pkg.tar are already in repo-out.
+              rm -rf /build/os/packages/*/src /build/os/packages/*/pkg
+              df -h / | tail -1
 
               # Versioned USB/release profile outside the host mount.
               cp -r /src/os/mkosi /build/mkosi
