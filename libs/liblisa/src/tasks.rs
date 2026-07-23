@@ -12,9 +12,10 @@
 use serde_json::{Value, json};
 
 /// A guided-generation task: a system instruction + a result schema.
+/// Owned strings so parameterized tasks (extract, classify) work.
 pub struct Task {
-    pub name: &'static str,
-    pub system: &'static str,
+    pub name: String,
+    pub system: String,
     pub schema: Value,
 }
 
@@ -46,7 +47,7 @@ impl Task {
 /// Addressed-intent: was this utterance directed at Lisa? (ADR-0011.)
 pub fn addressed_intent() -> Task {
     Task {
-        name: "addressed_intent",
+        name: "addressed_intent".into(),
         system: "You are the ear of Lisa, an on-device assistant. You are given a \
                  transcript of something a person said out loud near the computer. \
                  Decide whether they were addressing Lisa (asking it to do or answer \
@@ -55,7 +56,8 @@ pub fn addressed_intent() -> Task {
                  responding when not addressed is worse than missing a request. \
                  Reply ONLY as the JSON object: addressed (bool), confidence (0..1), \
                  intent (a short imperative summary of the request, or empty when not \
-                 addressed).",
+                 addressed)."
+            .into(),
         schema: json!({
             "type": "object",
             "properties": {
@@ -64,6 +66,60 @@ pub fn addressed_intent() -> Task {
                 "intent": {"type": "string", "maxLength": 200}
             },
             "required": ["addressed", "confidence", "intent"]
+        }),
+    }
+}
+
+/// Extract structured data matching `schema` from free text — the
+/// flagship task (§5.6): "paste text → typed struct". `instruction`
+/// tailors it (e.g. "Extract the recipe.").
+pub fn extract(name: &str, instruction: &str, schema: Value) -> Task {
+    Task {
+        name: name.to_string(),
+        system: format!(
+            "{instruction} Read the text and return ONLY a JSON object matching the \
+             required schema. Use empty strings / empty arrays for anything not \
+             present; never invent facts."
+        ),
+        schema,
+    }
+}
+
+/// Classify text into exactly one of `labels` (+ a confidence).
+pub fn classify(labels: &[&str]) -> Task {
+    Task {
+        name: "classify".into(),
+        system: format!(
+            "Classify the text into exactly one of these labels: {}. Return ONLY the \
+             JSON object with the chosen label and a confidence in 0..1.",
+            labels.join(", ")
+        ),
+        schema: json!({
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "enum": labels},
+                "confidence": {"type": "number"}
+            },
+            "required": ["label", "confidence"]
+        }),
+    }
+}
+
+/// Summarize text to a short structured result (title + bullet points).
+pub fn summarize() -> Task {
+    Task {
+        name: "summarize".into(),
+        system: "Summarize the text. Return ONLY the JSON object: a short title and \
+                 up to 5 bullet points capturing the key facts."
+            .into(),
+        schema: json!({
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "maxLength": 100},
+                "points": {"type": "array", "items": {"type": "string", "maxLength": 200},
+                           "minItems": 1, "maxItems": 5}
+            },
+            "required": ["title", "points"]
         }),
     }
 }
@@ -93,5 +149,23 @@ mod tests {
         // field (the lesson from the guided-gen gate).
         let g = addressed_intent().grammar().unwrap();
         assert!(g.contains("{0,200}"), "intent must be bounded: {g}");
+    }
+
+    #[test]
+    fn classify_enum_and_extract_compile_to_grammars() {
+        let c = classify(&["bug", "feature", "question"]);
+        let g = c.grammar().unwrap();
+        assert!(g.contains("bug"), "enum labels in grammar: {g}");
+        assert!(
+            g.contains("feature") && g.contains("question"),
+            "grammar: {g}"
+        );
+        let e = extract(
+            "recipe",
+            "Extract the recipe.",
+            json!({"type":"object","properties":{"title":{"type":"string","maxLength":80}},"required":["title"]}),
+        );
+        assert!(e.system.contains("Extract the recipe"));
+        assert!(e.grammar().unwrap().contains("string-char"));
     }
 }
