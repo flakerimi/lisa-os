@@ -18,6 +18,7 @@ jobs:
       layer: ${{ steps.filter.outputs.layer }}
       shell: ${{ steps.filter.outputs.shell }}
       ime: ${{ steps.filter.outputs.ime }}
+      gnome_panel: ${{ steps.filter.outputs.gnome_panel }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -48,6 +49,9 @@ jobs:
               - '.github/workflows/ci.yml'
             ime:
               - 'ime/**'
+              - '.github/workflows/ci.yml'
+            gnome_panel:
+              - 'os/packages/gnome-control-center-lisa/**'
               - '.github/workflows/ci.yml'
 
   lint:
@@ -104,6 +108,36 @@ jobs:
             cmake -S /src/ime/fcitx5-lisa -B /tmp/build
             cmake --build /tmp/build
             cd /tmp/build && ctest --output-on-failure'
+
+  # ADR-0012: build our forked gnome-control-center (stock 50.3 + the
+  # native Intelligence panel) with makepkg in an x86 Arch container —
+  # the real build gate the arm64 dev-host compile-check cannot be. Heavy
+  # (full g-c-c compile), so path-filtered to the package dir. --nocheck
+  # skips upstream's xvfb test suite; --skippgpcheck trusts the pinned
+  # tag/commit (no keyring in CI).
+  gnome-panel-build:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.gnome_panel == 'true'
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: makepkg gnome-control-center-lisa in Arch
+        run: |
+          sudo podman run --rm -v "$PWD":/src docker.io/library/archlinux:latest bash -ec '
+            # devtools provides arch-meson (used by the PKGBUILD build()).
+            pacman -Syu --noconfirm --needed base-devel git devtools >/dev/null
+            useradd -m builder
+            printf "builder ALL=(ALL) NOPASSWD: ALL\n" > /etc/sudoers.d/builder
+            cp -r /src/os/packages/gnome-control-center-lisa /home/builder/pkg
+            chown -R builder:builder /home/builder/pkg
+            su builder -c "cd ~/pkg && makepkg -s --nocheck --skippgpcheck --noconfirm"
+            # Prove the panel landed: our desktop file must be in the package.
+            pkg=$(ls /home/builder/pkg/gnome-control-center-[0-9]*.pkg.tar.*)
+            echo "built: $pkg"
+            pacman -Qlp "$pkg" | grep -q gnome-lisa-panel.desktop \
+              && echo "OK: Intelligence panel .desktop present" \
+              || { echo "FAIL: panel .desktop missing from package"; exit 1; }'
 
   # PLAN §5.1 acceptance forerunner: unmodified OpenAI Python client
   # against the OpenAI-compat endpoint.
