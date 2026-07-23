@@ -30,6 +30,10 @@ struct Args {
     /// Model path for the llama engine (implies --engine llama).
     #[arg(long)]
     model: Option<PathBuf>,
+    /// Serve every model in this store refs dir by name (implies llama).
+    /// The "download in Settings, use it anywhere" path.
+    #[arg(long)]
+    models_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -49,6 +53,10 @@ async fn main() -> anyhow::Result<()> {
         cfg.llama.model_path = Some(model);
         cfg.engine = EngineKind::Llama;
     }
+    if let Some(dir) = args.models_dir {
+        cfg.llama.models_dir = Some(dir);
+        cfg.engine = EngineKind::Llama;
+    }
     match args.engine.as_deref() {
         Some("stub") => cfg.engine = EngineKind::Stub,
         Some("llama") => cfg.engine = EngineKind::Llama,
@@ -56,25 +64,18 @@ async fn main() -> anyhow::Result<()> {
         None => {}
     }
 
-    let model_name_for = |p: &std::path::Path| {
-        p.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "lisa-system".to_string())
-    };
     let engines: Arc<dyn EngineProvider> = match cfg.engine {
         EngineKind::Stub => Arc::new(SingleEngine {
             engine: Arc::new(StubEngine),
             name: "lisa-system-stub".to_string(),
         }),
         EngineKind::Llama => {
-            let model_path = cfg.llama.model_path.clone().ok_or_else(|| {
-                anyhow::anyhow!("engine llama requires --model or llama.model_path")
-            })?;
-            let refs_dir = model_path
-                .parent()
-                .map(std::path::Path::to_path_buf)
-                .unwrap_or_default();
-            let default_model = model_name_for(&model_path);
+            let (refs_dir, default_model) = llama_refs_and_default(&cfg.llama)?;
+            info!(
+                dir = %refs_dir.display(),
+                default = %default_model,
+                "llama engine serving the model store"
+            );
             let base = cfg.llama.clone();
             // One supervised llama-server child per resident model,
             // lazily spawned, LRU-evicted beyond max_resident (§5.1).
@@ -121,12 +122,9 @@ async fn main() -> anyhow::Result<()> {
 
     let model_name = match cfg.engine {
         EngineKind::Stub => "lisa-system-stub".to_string(),
-        EngineKind::Llama => cfg
-            .llama
-            .model_path
-            .as_ref()
-            .map(|p| model_name_for(p))
-            .unwrap_or_else(|| "lisa-system".to_string()),
+        EngineKind::Llama => llama_refs_and_default(&cfg.llama)
+            .map(|(_, name)| name)
+            .unwrap_or_else(|_| "lisa-system".to_string()),
     };
     let engine_kind = match cfg.engine {
         EngineKind::Stub => "stub".to_string(),
@@ -157,4 +155,32 @@ async fn main() -> anyhow::Result<()> {
         })
         .await?;
     Ok(())
+}
+
+/// Resolve the llama engine's (refs_dir, default_model) from config:
+/// an explicit `model_path` (its parent is the dir, its filename the
+/// default), or a `models_dir` store served by name (the default is the
+/// configured one, else the first model present — so a fresh download is
+/// usable with nothing set). Errors only when neither is configured.
+fn llama_refs_and_default(cfg: &config::LlamaConfig) -> anyhow::Result<(PathBuf, String)> {
+    if let Some(mp) = cfg.model_path.clone() {
+        let refs = mp
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default();
+        let name = mp
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "lisa-system".to_string());
+        return Ok((refs, name));
+    }
+    if let Some(dir) = cfg.models_dir.clone() {
+        let default = cfg
+            .default_model
+            .clone()
+            .or_else(|| config::first_model_in(&dir))
+            .unwrap_or_else(|| "lisa-system".to_string());
+        return Ok((dir, default));
+    }
+    anyhow::bail!("engine llama needs --model, llama.model_path, or --models-dir/llama.models_dir")
 }

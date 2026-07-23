@@ -44,6 +44,15 @@ pub struct LlamaConfig {
     /// llama-server binary; resolved via PATH by default.
     pub server_bin: PathBuf,
     pub model_path: Option<PathBuf>,
+    /// The model store's refs dir (e.g. /var/lib/lisa/models/refs). When
+    /// set — and no explicit `model_path` — inferenced serves ANY model
+    /// in it *by name*, lazily. This is the "download it in Settings and
+    /// it's just there" path: no restart, no config per model.
+    pub models_dir: Option<PathBuf>,
+    /// Which model a bare/default request resolves to. Falls back to the
+    /// first model present in `models_dir`, so a fresh download is usable
+    /// without setting anything.
+    pub default_model: Option<String>,
     /// Port the supervised child listens on (loopback only).
     pub port: u16,
     /// Extra llama-server arguments (e.g. ["-ngl", "99"] for GPU offload).
@@ -57,11 +66,26 @@ impl Default for LlamaConfig {
         Self {
             server_bin: PathBuf::from("llama-server"),
             model_path: None,
+            models_dir: None,
+            default_model: None,
             port: 7778,
             extra_args: Vec::new(),
             max_resident: 2,
         }
     }
+}
+
+/// First model file in a store refs dir (deterministic order), if any.
+/// Lets inferenced serve a just-downloaded model with no default set.
+pub fn first_model_in(dir: &Path) -> Option<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| !t.is_dir()).unwrap_or(false))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names.into_iter().next()
 }
 
 /// The `remote:byo` tier surface (PLAN §5.11, ADR-0008). inferenced
@@ -131,6 +155,28 @@ mod tests {
     #[test]
     fn unknown_keys_are_rejected() {
         assert!(toml::from_str::<Config>("no_such_key = 1\n").is_err());
+    }
+
+    #[test]
+    fn models_dir_and_default_parse_and_first_model_is_deterministic() {
+        let c: Config = toml::from_str(
+            "engine = \"llama\"\n[llama]\nmodels_dir = \"/var/lib/lisa/models/refs\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            c.llama.models_dir.as_deref(),
+            Some(Path::new("/var/lib/lisa/models/refs"))
+        );
+        assert!(c.llama.default_model.is_none());
+
+        // first_model_in: empty dir → None; picks the alphabetically-first
+        // regular file (so a fresh download is servable with no default).
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(first_model_in(dir.path()), None);
+        std::fs::write(dir.path().join("qwen3-0.6b-instruct-q8"), b"x").unwrap();
+        std::fs::write(dir.path().join("gemma-3-1b-it-q8"), b"x").unwrap();
+        std::fs::create_dir(dir.path().join("blobs")).unwrap(); // dirs skipped
+        assert_eq!(first_model_in(dir.path()).as_deref(), Some("gemma-3-1b-it-q8"));
     }
 
     #[test]
