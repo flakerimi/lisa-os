@@ -82,7 +82,18 @@ impl ModelPool {
     }
 
     async fn resolve(&self, model: Option<&str>) -> Result<Arc<dyn Engine>, EngineError> {
-        let name = model.unwrap_or(&self.default_model).to_string();
+        // Well-known aliases resolve to the resident model, so callers can
+        // just say "lisa" (or omit the field) without knowing the exact
+        // model id — the common single-model case just works.
+        let requested = model.unwrap_or(&self.default_model);
+        let name = if matches!(
+            requested,
+            "lisa" | "lisa-system" | "lisa-system-stub" | "default" | "auto" | ""
+        ) {
+            self.default_model.clone()
+        } else {
+            requested.to_string()
+        };
         let mut state = self.inner.lock().await;
 
         if let Some(engine) = state.engines.get(&name) {
@@ -229,6 +240,17 @@ mod tests {
         // model-b was evicted; asking for it again respawns.
         pool.resolve(Some("model-b")).await.unwrap();
         assert_eq!(alive.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn well_known_aliases_resolve_to_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let (alive, pool) = test_pool(dir.path(), 2);
+        for alias in ["lisa", "default", "auto", ""] {
+            pool.resolve(Some(alias)).await.unwrap();
+        }
+        // All aliases hit the one default model — a single spawn.
+        assert_eq!(alive.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
