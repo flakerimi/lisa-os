@@ -45,6 +45,13 @@ package_lisa-inferenced() {
     install -Dm755 target/release/lisa-inferenced "$pkgdir/usr/bin/lisa-inferenced"
     install -Dm644 os/packages/lisa/lisa-inferenced.service \
         "$pkgdir/usr/lib/systemd/system/lisa-inferenced.service"
+    # Per-user session-bus surface (org.lisa.Inference1) for the shell
+    # surfaces; enabled for every user from first login.
+    install -Dm644 os/packages/lisa/lisa-inferenced-dbus.service \
+        "$pkgdir/usr/lib/systemd/user/lisa-inferenced-dbus.service"
+    install -d "$pkgdir/usr/lib/systemd/user/default.target.wants"
+    ln -s ../lisa-inferenced-dbus.service \
+        "$pkgdir/usr/lib/systemd/user/default.target.wants/lisa-inferenced-dbus.service"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
 
@@ -122,9 +129,11 @@ package_lisa-shell() {
     # management (ADR-0012) — it resolves this desktop id.
     install -Dm644 shell/settings/org.lisa.Settings.desktop \
         "$pkgdir/usr/share/applications/org.lisa.Settings.desktop"
-    # Session defaults: extensions enabled, input-source switcher off
-    # Super+Space so the assistant owns it (§5.7.1). glib2's pacman
-    # hook folds this into the compiled system schemas on install.
+    # Session defaults: extensions enabled; Super+Space is the
+    # Spotlight-style search (§5.7.2), Super+Shift+Space the assistant
+    # overlay (§5.7.1), the input-source switcher moves to
+    # Ctrl+Super+Space. glib2's pacman hook folds this into the
+    # compiled system schemas on install.
     install -Dm644 os/packages/lisa/10_lisa-shell.gschema.override \
         "$pkgdir/usr/share/glib-2.0/schemas/10_lisa-shell.gschema.override"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

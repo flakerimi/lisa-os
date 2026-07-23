@@ -1,0 +1,24 @@
+# lisa-inferenced-dbus — session-bus surface org.lisa.Inference1
+# (PLAN §5.1, Appendix A). Runs per-user alongside the hardened system
+# service (lisa-inferenced.service): that one owns compute + the
+# OpenAI-compat HTTP port and deliberately cannot reach the user's
+# session bus (DynamicUser ≠ the login user's bus socket), so this
+# companion gives the shell surfaces — assistant overlay (§5.7.1) and
+# the launcher's "Ask Lisa" handoff (§5.7.2) — their engine surface.
+# Same binary, same shared model store, loopback HTTP on 7778 (the
+# system service owns 7777); the ledger it gates on is the user's own.
+#
+# Bus-loss behavior: the daemon exits when its D-Bus connection dies
+# (watchdog in main.rs); Restart=on-failure puts the name back.
+
+[Unit]
+Description=Lisa inference session-bus surface (org.lisa.Inference1)
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/lisa-inferenced --dbus --bind 127.0.0.1:7778 --engine llama --models-dir /var/lib/lisa-models/refs
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

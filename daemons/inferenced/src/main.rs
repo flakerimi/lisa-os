@@ -1,7 +1,8 @@
 //! lisa-inferenced entrypoint — the one process that owns compute for
-//! inference (`docs/PLAN.md` §5.1). M0 walking skeleton: OpenAI-compat HTTP
-//! on loopback with the stub engine, llama-server supervision scaffold, and
-//! an optional D-Bus liveness surface.
+//! inference (`docs/PLAN.md` §5.1). OpenAI-compat HTTP on loopback,
+//! llama-server supervision with a stub fallback, and the opt-in
+//! org.lisa.Inference1 session-bus surface the shell uses
+//! (`os/packages/lisa/lisa-inferenced-dbus.service`).
 
 use clap::Parser;
 use lisa_inferenced::config::{self, Config, EngineKind};
@@ -34,6 +35,11 @@ struct Args {
     /// The "download in Settings, use it anywhere" path.
     #[arg(long)]
     models_dir: Option<PathBuf>,
+    /// Register org.lisa.Inference1 on the session bus (config key
+    /// `dbus`). Used by the per-user companion unit that gives the
+    /// shell surfaces their engine surface.
+    #[arg(long)]
+    dbus: bool,
 }
 
 #[tokio::main]
@@ -62,6 +68,9 @@ async fn main() -> anyhow::Result<()> {
         Some("llama") => cfg.engine = EngineKind::Llama,
         Some(other) => anyhow::bail!("unknown engine `{other}` (stub | llama)"),
         None => {}
+    }
+    if args.dbus {
+        cfg.dbus = true;
     }
 
     // Decide the effective engine. `--engine llama` still falls back to the
@@ -140,11 +149,29 @@ async fn main() -> anyhow::Result<()> {
 
     let scheduler = Arc::new(lisa_inferenced::scheduler::Scheduler::new(1));
 
-    // D-Bus is opt-in until the portal lands; never fatal.
+    // D-Bus is opt-in (the per-user companion unit passes --dbus); never
+    // fatal. The hardened system unit has no session bus to reach.
     let _dbus_conn = if cfg.dbus {
         match dbus::serve(Arc::clone(&engines), Arc::clone(&scheduler)).await {
             Ok(conn) => {
                 info!("org.lisa.Inference1 registered on the session bus");
+                // A dead bus connection silently drops the name while
+                // the process keeps serving (seen live: session restart
+                // → bus socket gone → org.lisa.Inference1 vanished with
+                // the daemon still up). Exit and let systemd restart us
+                // onto the live bus instead of serving a ghost.
+                let watchdog = conn.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        if watchdog.is_closed() {
+                            tracing::error!(
+                                "D-Bus connection lost — exiting so systemd re-registers the name"
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                });
                 Some(conn)
             }
             Err(e) => {

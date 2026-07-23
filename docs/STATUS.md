@@ -29,6 +29,11 @@ claim below is enforced by CI on `main`, not aspirational.
 - QoS scheduler: interactive preempts background streams < 250 ms.
 - `org.lisa.Inference1` D-Bus surface: OpenSession → (path, fd), tokens
   stream over the fd to EOF, Embed/Cancel/Close (tested over zbus p2p).
+  Ships as the per-user `lisa-inferenced-dbus.service` (the hardened
+  system unit can't reach the login session's bus; companion owns 7778,
+  system owns 7777); a bus-loss watchdog exits the daemon so systemd
+  re-registers the name instead of serving a ghost (found live on the
+  iMac: session restart silently dropped the name).
 - Embeddings: `/v1/embeddings` + `Engine::embed` + `lisa embed` (llama
   needs `--embeddings --pooling mean`; 1024-dim live).
 - Multi-model residency: `EngineProvider`/`ModelPool` — one child per
@@ -87,10 +92,12 @@ Pantheon. Feeds the M4 shell ADR.
 
 ## Open items / next moves
 
-- **iMac field test:** boot v20260722.4 USB on the Intel iMac (root now
-  found via `root=PARTLABEL`; USB-HID in the initrd). Ethernet works;
-  Wi-Fi likely not (Broadcom firmware). `lisa install <disk>` erases
-  Ubuntu — owner's call.
+- **iMac field test:** re-imaged onto the bigger disk (2026-07-23);
+  hand-syncing files is dead — fixes ship via the release channel and
+  the box pulls them with `lisa update` (sysupdate). First live M4 run
+  verified: extensions ACTIVE (after the shell-version fix),
+  `org.lisa.Overlay1.UI` owned by gnome-shell, Summon → overlay shows →
+  ledgered context retrieval. `lisa install <disk>` already done.
 - **iMac as CI runner:** not yet registered (needs a fresh registration
   token minted at the machine); unlocks perf gates + the Flutter Linux
   spike half + real M4 desktop work.
@@ -111,8 +118,13 @@ Pantheon. Feeds the M4 shell ADR.
   name, Spotlight-style, prompt pre-submitted; promoted when the query
   reads like a question), Ledger app (GTK4/GJS), fcitx5-lisa proofread
   addon (ADR-0007) — pure logic unit-tested everywhere (`just
-  shell-test`/`ime-test`); live verification and the §5.7 budget runs
-  still need a Linux desktop session (the iMac). Deferred within M4:
+  shell-test`/`ime-test`). macOS-style summon keys: **Super+Space =
+  search** (§5.7.2), **Super+Shift+Space = overlay** (§5.7.1),
+  input-source switcher on Ctrl+Super+Space. First live run on the
+  iMac found and fixed: metadata `shell-version` capped at 49 while
+  the image ships GNOME 50 (extensions never loaded) — now declares
+  50. Still need the desktop session: the §5.7 budget runs. Deferred
+  within M4:
   voice v1 (§5.7.5), writing-tools layer 1 (GTK module), wlr-layer-shell
   overlay frontend, bus-action launcher lane (M5).
 - **M5 (branch `m5-agentd`, §5.4, ADR-0009):** Agent Bus core landed —
