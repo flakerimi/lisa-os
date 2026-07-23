@@ -49,6 +49,22 @@ to `.app` for the pitch.
   (one-line change in `mkosi.postinst.chroot`; hold until the site
   answers so Settings › About never links to a parked page).
 
+## Repos (decided 2026-07-23)
+
+Split, but not symmetrically:
+
+- **`lisaos.app` → its own repo** (`Lisa-AgenticOS/lisaos.app`). Marketing
+  moves on its own cadence and should be editable without the OS monorepo
+  (elementary keeps `website` separate too). Deploy: Pages/Netlify + CNAME.
+- **`lisaos.dev` → built from the monorepo `docs/`**, published out. Docs
+  belong next to the code they describe (a behavior change updates docs in
+  the same PR); a separate source repo just drifts. Deploy: CI builds
+  `docs/` (mdBook / Astro Starlight) → Pages/Cloudflare + CNAME.
+
+Hosting note: GitHub Pages serves one custom domain per repo, so two
+domains = two deploys. Cloudflare Pages / Netlify can multi-site from one
+account (and point at a monorepo subfolder), which suits the docs deploy.
+
 ## Rollout
 
 1. **v1 landing (`lisaos.app`)** — one static page from the branding, a
