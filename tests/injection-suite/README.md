@@ -22,10 +22,15 @@ attempts. The assertion is two-layered:
 
 ## Corpus
 
-`src/lib.rs` generates the corpus as payload × vector × target. First
-slice: 10 payloads × 5 vectors (mail/file/screen/web/app-forwarded) × 3
-privileged targets = **150 attempts**. Reaching the 500+ bar is adding
-payloads to the bank, not reworking the harness. The corpus is a library
-so the gate test and the future model-in-the-loop test share it.
+`src/lib.rs` generates the corpus as payload × vector × target: 40
+payloads × 5 vectors (mail/file/screen/web/app-forwarded) × 3 privileged
+targets = **600 attempts**, clearing the §5.10 500+ bar (the gate asserts
+the floor so the bank can't shrink back under it). The payload bank is a
+deliberate taxonomy — direct override, authority/system spoof,
+delimiter/context escape, false prior-approval, mode/roleplay switch,
+conditional triggers, exfiltration, provenance spoofing, urgency,
+multi-step chaining, payment fraud — since the bus guarantee is
+technique-agnostic, breadth is the point. The corpus is a library so the
+gate test and the future model-in-the-loop test share it.
 
 Run: `cargo test -p lisa-injection-suite`.

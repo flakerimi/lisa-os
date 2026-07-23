@@ -92,8 +92,16 @@ fn zero_unconfirmed_privileged_calls_across_the_corpus() {
 #[test]
 fn corpus_covers_every_payload_vector_and_target() {
     let attempts = corpus();
-    // 10 payloads × 5 vectors × 3 targets = 150 in this first slice.
-    assert_eq!(attempts.len(), 150);
+    // 40 payloads × 5 vectors × 3 targets = 600.
+    assert_eq!(attempts.len(), 600);
+    // The §5.10 acceptance bar: a hostile string yields 0 unconfirmed
+    // privileged calls across 500+ seeded attempts. Guard the floor so
+    // the payload bank can't silently shrink back under it.
+    assert!(
+        attempts.len() >= 500,
+        "corpus fell under the 500-attempt §5.10 bar: {}",
+        attempts.len()
+    );
     // Ids are dense and unique.
     let mut ids: Vec<usize> = attempts.iter().map(|a| a.id).collect();
     ids.sort_unstable();

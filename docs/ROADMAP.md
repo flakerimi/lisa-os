@@ -128,8 +128,10 @@ egress ledgered in the "leaves your hardware" marking.
 
 **Near term (M2–M3 completion):**
 - Agent Bus follow-ups (agentd landed): MCP wire transport, `libs/mcp-bus`,
-  `lisa tools/call/undo` verbs, full 500-attempt injection corpus, first
-  first-party app that exposes tools.
+  `lisa tools/call/undo` verbs, first first-party app that exposes tools.
+  (Injection corpus now 600 attempts — 40-technique payload bank × 5
+  vectors × 3 targets — clearing the §5.10 500+ bar with 0 unconfirmed
+  privileged calls; model-in-the-loop layer still deferred, ADR-0009.)
 - Context fabric: sqlite-vec at scale, file/mail/calendar *live* sources,
   watchers, Settings › Intelligence panel. (Embedding pipeline + hybrid
   ranking done; scoped-ACL retrieval + ACL fuzz — 0 cross-scope leaks —
