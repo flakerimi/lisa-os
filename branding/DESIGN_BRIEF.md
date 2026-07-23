@@ -25,18 +25,21 @@ action per view, quiet color, humane copy.
 
 ### Brand foundations
 
-**Logo.** A warm "presence" — a softly-lit orb on a rounded-square
-(squircle) in a coral gradient. It reads as a gentle companion that lives
-on your hardware, not a broadcast/signal. Wordmark: "**Lisa**" in ink +
-"**OS**" in coral. (Assets exist as `lisa-mark.svg` / `lisa-wordmark.svg`.)
+**Logo.** A warm "presence" — a softly-lit orb — held in a rounded-square
+(squircle) with an **indigo** gradient: calm intelligence cradling a warm
+companion that lives on your hardware, not a broadcast/signal. Wordmark:
+"**Lisa**" in ink + "**OS**" in indigo. (Assets: `lisa-mark.svg` /
+`lisa-wordmark.svg`.)
 
 **Color tokens** (starting system — refine, but keep the warmth and the
 reserved amber):
 
-Brand
-- Coral 300 `#FF9E7A`  — gradient top, soft accents
-- Coral 500 `#EE5B3B`  — PRIMARY brand, buttons, the "OS" in the wordmark
-- Coral 700 `#C8431F`  — pressed / on-light emphasis
+Brand — indigo (calm intelligence). This is the UI/primary color.
+- Indigo 300 `#6D63FF`  — gradient top, hovers, soft accents
+- Indigo 500 `#4F46E5`  — PRIMARY brand, buttons, the "OS" in the wordmark
+- Indigo 700 `#4338CA`  — pressed, gradient base
+- Warm Orb  `#FFD3B8`→`#FFF` — the logo orb only (identity warmth). Do NOT
+  use orange as a UI accent — it must not compete with the reserved amber.
 
 Warm neutrals (the UI is built from these — warm-tinted, never cold gray)
 - Ink 900 `#2B2320`    — primary text on light
@@ -58,8 +61,8 @@ Semantic (warm-leaning, use sparingly)
 **RESERVED — do not use for brand or generic UI:**
 - Egress amber `#E66100` means exactly one thing: **"this leaves your
   hardware."** It marks any remote/offload action and its consent toggles.
-  It must never blend into the brand coral — keep them visibly distinct so
-  the warning always reads as a warning.
+  It must never read as a brand color — the indigo brand already sits far
+  from it, so the warning always reads as a warning. Keep it that way.
 
 **Typography.** System-native sans (Cantarell on GNOME; SF/Segoe
 fallback). Restrained scale, tight display headings, comfortable body.
@@ -71,7 +74,7 @@ assistant, calm cross-fades, no bounce/flash. Nothing that reads as
 surveillance or hype.
 
 **Iconography.** GNOME symbolic style (monoline, 16px grid) for UI;
-the coral mark only for the OS/brand.
+the indigo mark only for the OS/brand.
 
 ### Principles
 
@@ -83,7 +86,7 @@ the coral mark only for the OS/brand.
    one designed thing (tokens-first — every surface reads the same theme).
 3. **Humane, not clever.** Plain words, honest states ("alpha — here's
    what works"), no dark patterns, no fake urgency.
-4. **Accessible.** WCAG AA contrast (body text on Ink, not coral);
+4. **Accessible.** WCAG AA contrast (body text on Ink, not on the brand);
    full keyboard paths; light + dark parity.
 
 ### Screens to design (priority order)
