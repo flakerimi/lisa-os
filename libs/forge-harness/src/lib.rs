@@ -65,8 +65,13 @@ impl Backend for OpenAiBackend {
             "model": self.model,
             "messages": [
                 {"role": "system", "content":
-                    "You are the Lisa Forge. Reply with a JSON object {path, content}: \
-                     the project-relative file path and the COMPLETE new file content."},
+                    "You are the Lisa Forge, writing a Dart/Flutter app. Reply with a \
+                     JSON object {path, content}. `path` MUST be an actual \
+                     project-relative path such as `bin/main.dart` or \
+                     `lib/main.dart` — never an absolute path, never a placeholder \
+                     like /path/to/file. `content` is the COMPLETE new file content \
+                     (not a diff, not an ellipsis). Fix any analyzer findings you are \
+                     given."},
                 {"role": "user", "content": format!("Task: {task}\n\n{context}")}
             ],
             "response_format": {"type": "json_schema",
@@ -122,7 +127,24 @@ pub fn forge(
     let mut context = String::from("Fresh iteration.");
     for iteration in 1..=max_iterations {
         let edit = backend.edit_for(task, &context)?;
-        jail.write(&edit.path, &edit.content)?;
+        // A jail rejection (absolute path, traversal, or a placeholder
+        // like /path/to/file) is a fixable model mistake, not a fatal
+        // error: tell the model and let it retry. The jail still refused
+        // to write outside the project — the security boundary holds.
+        // Real I/O errors still propagate.
+        match jail.write(&edit.path, &edit.content) {
+            Ok(()) => {}
+            Err(jail::JailError::Escape(bad)) => {
+                context = format!(
+                    "The path `{bad}` was rejected: it must be a project-relative \
+                     path with no leading slash and no `..` — for example \
+                     `bin/main.dart` or `lib/src/foo.dart`. Reply again with a \
+                     valid project-relative path and the complete file content."
+                );
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        }
         match analyze(project)? {
             None => {
                 return Ok(ForgeReport {

@@ -125,6 +125,27 @@ enum Command {
         #[command(subcommand)]
         cmd: AmbientCmd,
     },
+    /// LisaCode: talk an app into existence — the Forge harness drives a
+    /// model to write + fix code until it passes analysis (PLAN §5.12.1).
+    Forge {
+        /// What to build, e.g. "a tip calculator".
+        task: Vec<String>,
+        /// Project directory (created/scaffolded if empty).
+        #[arg(long, default_value = "./lisa-app")]
+        project: PathBuf,
+        /// Model — local (default) or remote:<provider>:<coder-model>.
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(
+            long,
+            default_value = "http://127.0.0.1:7777",
+            env = "LISA_INFERENCE_URL"
+        )]
+        url: String,
+        /// Max plan→edit→analyze iterations before giving up.
+        #[arg(long, default_value_t = 6)]
+        max_iters: usize,
+    },
     /// Embed text into a vector (reads stdin when piped).
     Embed {
         text: Vec<String>,
@@ -306,6 +327,13 @@ fn run() -> anyhow::Result<()> {
         }
         Command::Say { text } => voice::say(&text.join(" ")),
         Command::Ambient { cmd } => ambient_cmd(cmd),
+        Command::Forge {
+            task,
+            project,
+            model,
+            url,
+            max_iters,
+        } => forge_cmd(&task.join(" "), &project, model, &url, max_iters),
         Command::Context { cmd } => context_cmd(cmd),
         Command::Memory { cmd, app } => memory_cmd(cmd, &app),
     }
@@ -483,6 +511,40 @@ fn install_cmd(target: &PathBuf, from: Option<PathBuf>, yes: bool) -> anyhow::Re
         target.display()
     );
     Ok(())
+}
+
+fn forge_cmd(
+    task: &str,
+    project: &PathBuf,
+    model: Option<String>,
+    url: &str,
+    max_iters: usize,
+) -> anyhow::Result<()> {
+    std::fs::create_dir_all(project)?;
+    let pubspec = project.join("pubspec.yaml");
+    if !pubspec.exists() {
+        std::fs::write(
+            &pubspec,
+            "name: lisa_app\ndescription: An app forged by LisaCode.\nenvironment:\n  sdk: ^3.0.0\n",
+        )?;
+        std::fs::create_dir_all(project.join("bin"))?;
+    }
+    println!("LisaCode: building \"{task}\" in {}", project.display());
+    let mut backend = forge_harness::OpenAiBackend {
+        url: url.to_string(),
+        model,
+    };
+    match forge_harness::forge(task, project, &mut backend, max_iters) {
+        Ok(report) => {
+            println!(
+                "converged in {} iteration(s) — code passes `dart analyze`. Source in {}",
+                report.iterations,
+                project.display()
+            );
+            Ok(())
+        }
+        Err(e) => bail!("forge did not finish: {e}"),
+    }
 }
 
 fn ambient_cmd(cmd: AmbientCmd) -> anyhow::Result<()> {
