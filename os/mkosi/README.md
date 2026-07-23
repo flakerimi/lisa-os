@@ -49,6 +49,17 @@ lives on the root slot (no /home partition yet), so an A/B update does
 not carry it over — acceptable for field-test sticks, not for real
 installs.
 
+**No first-boot prompts.** Timezone/locale/keymap are baked in
+`mkosi.conf` (`Timezone=Europe/Tirane`, `Locale=en_US.UTF-8`,
+`Keymap=us`) so `systemd-firstboot` has nothing to ask — without them,
+first boot stops at an interactive "select timezone" question on the
+console before gdm. `en_US.UTF-8` is generated in the postinst
+(`locale-gen`; Arch falls back to C otherwise), and the autologin user
+gets `gnome-initial-setup-done` so GNOME's welcome wizard is skipped
+too. These are field-device defaults, changeable in GNOME Settings ›
+Date & Time / Region (firstboot runs once — an already-provisioned
+device won't re-prompt).
+
 Field hardware (first target: iMac18,2): explicit
 `linux-firmware-amdgpu` / `linux-firmware-broadcom` (Radeon Pro 560
 display, BCM43602 Wi-Fi), bluez for Magic input pairing, `hid_apple`

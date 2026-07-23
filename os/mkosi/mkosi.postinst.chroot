@@ -8,6 +8,17 @@ if [ -f /usr/lib/systemd/system/lisa-inferenced.service ]; then
     systemctl enable lisa-inferenced.service
 fi
 
+# Locale generation: mkosi's Locale= bakes /etc/locale.conf (LANG=), but
+# on Arch the locale must also be *generated* or glibc silently falls
+# back to C. Uncomment en_US.UTF-8 and build it so LANG= actually
+# resolves. Timezone/keymap need no generation (localtime symlink +
+# vconsole.conf are baked by mkosi Timezone=/Keymap=).
+if [ -f /etc/locale.gen ]; then
+    sed -i 's/^#\(en_US\.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    grep -qxF 'en_US.UTF-8 UTF-8' /etc/locale.gen || echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen
+    locale-gen
+fi
+
 # Boot diagnosis: every boot (including one that only reaches
 # emergency/rescue) dumps its journal to the FAT ESP, readable from any
 # machine the stick is plugged into.
@@ -39,6 +50,17 @@ fi
 if [ -f /usr/lib/systemd/system/gdm.service ] && ! id lisa &>/dev/null; then
     useradd -m -G wheel -s /bin/bash lisa
     echo 'lisa:lisa' | chpasswd
+fi
+
+# Suppress GNOME's first-login wizard (gnome-initial-setup) for the
+# autologin user, so first login lands straight in the session instead
+# of a welcome/timezone/account tour. Harmless if g-i-s isn't installed
+# (we don't ship the `gnome` group). systemd-firstboot is separately
+# silenced by the baked Timezone/Locale/Keymap in mkosi.conf.
+if id lisa &>/dev/null; then
+    install -d -o lisa -g lisa -m 0755 /home/lisa/.config
+    echo yes > /home/lisa/.config/gnome-initial-setup-done
+    chown lisa:lisa /home/lisa/.config/gnome-initial-setup-done
 fi
 
 # Networking, one owner per image flavor:
