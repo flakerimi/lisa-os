@@ -160,7 +160,8 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         dart_project(dir.path());
-        let mut backend = ScriptedBackend::repeating(vec![write_main("void main() { broken(; }\n")]);
+        let mut backend =
+            ScriptedBackend::repeating(vec![write_main("void main() { broken(; }\n")]);
         let err = forge("task", dir.path(), &mut backend, 1);
         assert!(matches!(err, Err(ForgeError::NoConvergence(1))));
     }

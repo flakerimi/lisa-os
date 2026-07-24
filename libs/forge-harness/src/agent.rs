@@ -263,7 +263,11 @@ impl ScriptedBackend {
 }
 
 impl Backend for ScriptedBackend {
-    fn next_action(&mut self, messages: &[Message], _tools: &[ToolSpec]) -> Result<AgentAction, ForgeError> {
+    fn next_action(
+        &mut self,
+        messages: &[Message],
+        _tools: &[ToolSpec],
+    ) -> Result<AgentAction, ForgeError> {
         self.calls += 1;
         self.last_history = messages.to_vec();
         if let Some(action) = self.actions.pop_front() {
@@ -355,7 +359,11 @@ mod tests {
             .last_history
             .iter()
             .any(|m| m.role == Role::User && m.content.contains("Verifier findings"));
-        assert!(feedback, "findings must reach the model: {:?}", backend.last_history);
+        assert!(
+            feedback,
+            "findings must reach the model: {:?}",
+            backend.last_history
+        );
     }
 
     #[test]

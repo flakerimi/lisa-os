@@ -15,7 +15,11 @@ pub struct OpenAiBackend {
 }
 
 impl Backend for OpenAiBackend {
-    fn next_action(&mut self, messages: &[Message], tools: &[ToolSpec]) -> Result<AgentAction, ForgeError> {
+    fn next_action(
+        &mut self,
+        messages: &[Message],
+        tools: &[ToolSpec],
+    ) -> Result<AgentAction, ForgeError> {
         let body = request_body(self.model.as_deref(), messages, tools);
         let endpoint = format!("{}/v1/chat/completions", self.url.trim_end_matches('/'));
         let mut response = ureq::post(&endpoint)

@@ -195,7 +195,10 @@ pub fn execute_tool(jail: &Jail, call: &ToolCall) -> ToolOutcome {
                     entries.truncate(MAX_LIST_ENTRIES);
                     let mut text = entries.join("\n");
                     if total > MAX_LIST_ENTRIES {
-                        text.push_str(&format!("\n… and {} more entr(ies)", total - MAX_LIST_ENTRIES));
+                        text.push_str(&format!(
+                            "\n… and {} more entr(ies)",
+                            total - MAX_LIST_ENTRIES
+                        ));
                     }
                     if text.is_empty() {
                         text = "(empty directory)".into();
@@ -208,7 +211,10 @@ pub fn execute_tool(jail: &Jail, call: &ToolCall) -> ToolOutcome {
         "grep" => grep(jail, &call.args),
         "write_file" => match serde_json::from_value::<Edit>(call.args.clone()) {
             Ok(edit) => match jail.write(&edit.path, &edit.content) {
-                Ok(()) => ToolOutcome::ok(format!("wrote {} ({} bytes)", edit.path, edit.content.len()), true),
+                Ok(()) => ToolOutcome::ok(
+                    format!("wrote {} ({} bytes)", edit.path, edit.content.len()),
+                    true,
+                ),
                 Err(e) => ToolOutcome::err(e.to_string()),
             },
             Err(e) => ToolOutcome::err(format!("bad write_file arguments: {e}")),
@@ -228,7 +234,11 @@ pub fn execute_tool(jail: &Jail, call: &ToolCall) -> ToolOutcome {
 }
 
 fn edit_file(jail: &Jail, args: &Value) -> ToolOutcome {
-    let (path, old, new) = match (arg_str(args, "path"), arg_str(args, "old_string"), arg_str(args, "new_string")) {
+    let (path, old, new) = match (
+        arg_str(args, "path"),
+        arg_str(args, "old_string"),
+        arg_str(args, "new_string"),
+    ) {
         (Ok(p), Ok(o), Ok(n)) => (p, o, n),
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => return ToolOutcome::err(e),
     };
@@ -412,7 +422,10 @@ mod tests {
         let (_dir, jail) = jail();
         let out = execute_tool(
             &jail,
-            &call("write_file", json!({"path": "lib/a.dart", "content": "void main() { broken(); }\n"})),
+            &call(
+                "write_file",
+                json!({"path": "lib/a.dart", "content": "void main() { broken(); }\n"}),
+            ),
         );
         assert!(out.mutated, "{out:?}");
 
@@ -421,7 +434,10 @@ mod tests {
 
         let out = execute_tool(
             &jail,
-            &call("edit_file", json!({"path": "lib/a.dart", "old_string": "broken();", "new_string": "print('ok');"})),
+            &call(
+                "edit_file",
+                json!({"path": "lib/a.dart", "old_string": "broken();", "new_string": "print('ok');"}),
+            ),
         );
         assert!(out.mutated, "{out:?}");
         assert_eq!(
@@ -436,12 +452,21 @@ mod tests {
         jail.write("a.txt", "x x").unwrap();
         let out = execute_tool(
             &jail,
-            &call("edit_file", json!({"path": "a.txt", "old_string": "x", "new_string": "y"})),
+            &call(
+                "edit_file",
+                json!({"path": "a.txt", "old_string": "x", "new_string": "y"}),
+            ),
         );
-        assert!(!out.mutated && out.text.contains("matches 2 places"), "{out:?}");
+        assert!(
+            !out.mutated && out.text.contains("matches 2 places"),
+            "{out:?}"
+        );
         let out = execute_tool(
             &jail,
-            &call("edit_file", json!({"path": "a.txt", "old_string": "x", "new_string": "y", "replace_all": true})),
+            &call(
+                "edit_file",
+                json!({"path": "a.txt", "old_string": "x", "new_string": "y", "replace_all": true}),
+            ),
         );
         assert!(out.mutated);
         assert_eq!(jail.read("a.txt").unwrap(), "y y");
@@ -453,12 +478,18 @@ mod tests {
         jail.write("a.txt", "hello").unwrap();
         let out = execute_tool(
             &jail,
-            &call("edit_file", json!({"path": "nope.txt", "old_string": "x", "new_string": "y"})),
+            &call(
+                "edit_file",
+                json!({"path": "nope.txt", "old_string": "x", "new_string": "y"}),
+            ),
         );
         assert!(out.text.starts_with("error:"));
         let out = execute_tool(
             &jail,
-            &call("edit_file", json!({"path": "a.txt", "old_string": "zzz", "new_string": "y"})),
+            &call(
+                "edit_file",
+                json!({"path": "a.txt", "old_string": "zzz", "new_string": "y"}),
+            ),
         );
         assert!(out.text.contains("not found"));
     }
@@ -472,7 +503,10 @@ mod tests {
                 &call("write_file", json!({"path": bad, "content": "x"})),
             );
             assert!(!out.mutated);
-            assert!(out.text.contains("escapes the project jail"), "{bad}: {out:?}");
+            assert!(
+                out.text.contains("escapes the project jail"),
+                "{bad}: {out:?}"
+            );
         }
         let out = execute_tool(&jail, &call("read_file", json!({"path": ".."})));
         assert!(out.text.contains("escapes the project jail"));
@@ -481,8 +515,10 @@ mod tests {
     #[test]
     fn list_and_grep_see_the_tree() {
         let (_dir, jail) = jail();
-        jail.write("lib/main.dart", "void main() { print('needle'); }\n").unwrap();
-        jail.write("lib/src/util.dart", "// needle in a comment\n").unwrap();
+        jail.write("lib/main.dart", "void main() { print('needle'); }\n")
+            .unwrap();
+        jail.write("lib/src/util.dart", "// needle in a comment\n")
+            .unwrap();
         jail.write(".git/hidden", "needle").unwrap();
 
         let out = execute_tool(&jail, &call("list_dir", json!({"path": "."})));
@@ -491,9 +527,15 @@ mod tests {
         let out = execute_tool(&jail, &call("grep", json!({"pattern": "needle"})));
         assert!(out.text.contains("lib/main.dart:1:"), "{out:?}");
         assert!(out.text.contains("lib/src/util.dart:1:"), "{out:?}");
-        assert!(!out.text.contains("hidden"), "must not search .git: {out:?}");
+        assert!(
+            !out.text.contains("hidden"),
+            "must not search .git: {out:?}"
+        );
 
-        let out = execute_tool(&jail, &call("grep", json!({"pattern": "comment", "path": "lib/src"})));
+        let out = execute_tool(
+            &jail,
+            &call("grep", json!({"pattern": "comment", "path": "lib/src"})),
+        );
         assert!(out.text.contains("util.dart"), "{out:?}");
         let out = execute_tool(&jail, &call("grep", json!({"pattern": "absent"})));
         assert!(out.text.contains("no matches"));
@@ -502,11 +544,29 @@ mod tests {
     #[test]
     fn run_command_enforces_allowlist_and_arg_jail() {
         let (_dir, jail) = jail();
-        let out = execute_tool(&jail, &call("run_command", json!({"program": "sh", "args": ["-c", "id"]})));
+        let out = execute_tool(
+            &jail,
+            &call(
+                "run_command",
+                json!({"program": "sh", "args": ["-c", "id"]}),
+            ),
+        );
         assert!(out.text.contains("not allowlisted"));
-        let out = execute_tool(&jail, &call("run_command", json!({"program": "cat", "args": ["../../etc/passwd"]})));
+        let out = execute_tool(
+            &jail,
+            &call(
+                "run_command",
+                json!({"program": "cat", "args": ["../../etc/passwd"]}),
+            ),
+        );
         assert!(out.text.contains("leaves the project"));
-        let out = execute_tool(&jail, &call("run_command", json!({"program": "cat", "args": ["/etc/passwd"]})));
+        let out = execute_tool(
+            &jail,
+            &call(
+                "run_command",
+                json!({"program": "cat", "args": ["/etc/passwd"]}),
+            ),
+        );
         assert!(out.text.contains("leaves the project"));
     }
 
@@ -517,7 +577,13 @@ mod tests {
             return;
         }
         let (_dir, jail) = jail();
-        let out = execute_tool(&jail, &call("run_command", json!({"program": "echo", "args": ["forged"]})));
+        let out = execute_tool(
+            &jail,
+            &call(
+                "run_command",
+                json!({"program": "echo", "args": ["forged"]}),
+            ),
+        );
         assert!(out.text.contains("exit: 0"), "{out:?}");
         assert!(out.text.contains("forged"));
     }
