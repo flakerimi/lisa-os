@@ -1300,6 +1300,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lisa-notes"
+version = "0.1.0"
+dependencies = [
+ "mcp-bus",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "lisa-remoted"
 version = "0.1.0"
 dependencies = [
