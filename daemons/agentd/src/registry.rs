@@ -12,6 +12,7 @@
 use crate::manifest::{Manifest, ManifestError, ToolDecl};
 use crate::tier::Tier;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -23,6 +24,10 @@ pub struct ToolRef {
     pub tier: Tier,
     pub description: String,
     pub undoable: bool,
+    /// The tool's argument schema, verbatim from its manifest — the
+    /// intent router's arg-filler grammar-constrains against it
+    /// (liblisa::intent, ADR-0013).
+    pub input_schema: Value,
 }
 
 #[derive(Debug, Default)]
@@ -102,6 +107,7 @@ impl Registry {
                     tier: t.tier,
                     description: t.description.clone(),
                     undoable: t.undo.is_some(),
+                    input_schema: t.input_schema.clone(),
                 })
             })
             .collect()

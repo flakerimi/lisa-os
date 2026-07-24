@@ -6,6 +6,7 @@
 //! library). `tools`/`call`/`undo`/`ledger` are declared now and land with
 //! the Agent Bus in M5.
 
+mod agent;
 mod voice;
 
 use anyhow::{Context, bail};
@@ -56,11 +57,43 @@ enum Command {
         #[arg(long, env = "LISA_MODELS_DIR")]
         store: Option<PathBuf>,
     },
-    /// List tools on the Agent Bus (lands in M5, PLAN §5.4).
+    /// Natural language → a confirmed tool action on the Agent Bus:
+    /// `lisa do "add milk to my notes"` (ADR-0013 intent router).
+    Do {
+        /// What you want done, in plain words.
+        utterance: Vec<String>,
+        /// Inference endpoint for the intent router.
+        #[arg(
+            long,
+            default_value = "http://127.0.0.1:7777",
+            env = "LISA_INFERENCE_URL"
+        )]
+        url: String,
+        #[arg(long)]
+        model: Option<String>,
+        /// Print the routed intent and exit without calling the bus.
+        #[arg(long)]
+        dry_run: bool,
+        /// Auto-approve chip-level confirmations (modal ones still refuse).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List tools on the Agent Bus (PLAN §5.4).
     Tools,
-    /// Call a tool on the Agent Bus (lands in M5, PLAN §5.4).
-    Call,
-    /// Revert the last agent action (lands in M5, PLAN §5.4).
+    /// Call a tool on the Agent Bus directly:
+    /// `lisa call org.lisa.notes create_note '{"title":"milk"}'`.
+    Call {
+        /// App id (reverse-DNS, e.g. org.lisa.notes).
+        app_id: String,
+        /// Tool name (e.g. create_note).
+        tool: String,
+        /// Arguments as a JSON object (default {}).
+        args: Option<String>,
+        /// Auto-approve chip-level confirmations.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Revert the last undoable agent action (PLAN §5.4).
     Undo,
     /// Read the append-only audit ledger (PLAN §5.7.6).
     Ledger {
@@ -325,9 +358,21 @@ fn run() -> anyhow::Result<()> {
             background,
         } => ask(prompt, &url, model, no_stream, json_schema, background),
         Command::Models { cmd, store } => models(cmd, store),
-        Command::Tools | Command::Call | Command::Undo => {
-            bail!("the Agent Bus lands in M5 — see docs/PLAN.md §5.4")
-        }
+        Command::Do {
+            utterance,
+            url,
+            model,
+            dry_run,
+            yes,
+        } => agent::do_cmd(&utterance.join(" "), &url, model.as_deref(), dry_run, yes),
+        Command::Tools => agent::tools_cmd(),
+        Command::Call {
+            app_id,
+            tool,
+            args,
+            yes,
+        } => agent::call_cmd(&app_id, &tool, args.as_deref(), yes),
+        Command::Undo => agent::undo_cmd(),
         Command::Ledger { tail, json, db } => ledger_cmd(tail, json, db),
         Command::Embed { text, url } => embed(text, &url),
         Command::Install { target, from, yes } => install_cmd(&target, from, yes),
