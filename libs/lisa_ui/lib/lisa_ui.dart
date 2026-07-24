@@ -1,17 +1,241 @@
-/// lisa_ui — the Lisa design system on Flutter *core* widgets.
+/// lisa_ui — the widget kit Lisa apps import.
 ///
-/// PLAN §5.12 / ADR-0004: no `material_ui`/`cupertino_ui` dependency
-/// anywhere in this lane — only `flutter/widgets.dart` primitives, so the
-/// design system is ours from the first pixel. Tokens follow the
-/// elementary-inspired direction (docs/notes/design-direction.md):
-/// restrained type, quiet color, humane defaults. The theme file
-/// integration (Appendix E: shell + GTK + Qt + Flutter all read one
-/// token source) replaces [LisaTokens.fallback] with live values.
+/// ADR-0014 (phase 1): lisa_ui is THE API surface for Lisa apps. It wraps
+/// `package:flutter/material.dart` — a curated re-export of the Material
+/// widget vocabulary plus Lisa-branded widgets and theming — so apps write
+/// a single import:
+///
+/// ```dart
+/// import 'package:lisa_ui/lisa_ui.dart';
+/// ```
+///
+/// When Flutter finishes decoupling Material/Cupertino from the framework
+/// core into packages, phase 2 swaps the backend to a vendored, re-themed
+/// Material fork with no app-facing API change. ADR-0004 stays for the
+/// history: it records the Flutter-lane decision and the original
+/// core-widgets-only rule that this ADR supersedes for lisa_ui.
+///
+/// Theming: [lisaSeedColor] (violet) → `ColorScheme.fromSeed`, light +
+/// dark, Material 3, Rubik as the default font family. Rubik is NOT
+/// bundled and there is deliberately no google_fonts dependency — the
+/// family name resolves against the OS-installed font and falls back to
+/// the platform default sans when absent.
+///
+/// Tokens follow the elementary-inspired direction
+/// (docs/notes/design-direction.md): restrained type, quiet color, humane
+/// defaults. The theme file integration (Appendix E: shell + GTK + Qt +
+/// Flutter all read one token source) replaces [LisaTokens.fallback] with
+/// live values.
 library;
 
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+
+/// The Material widget vocabulary, re-exported so apps need only this one
+/// import. Curated: app structure, navigation, buttons, inputs, lists,
+/// dialogs, feedback, and theming primitives. The Lisa-prefixed widgets
+/// below are the pieces Material does not have.
+export 'package:flutter/material.dart'
+    show
+        ActionChip,
+        AlertDialog,
+        Alignment,
+        AlignmentGeometry,
+        AppBar,
+        AspectRatio,
+        AutovalidateMode,
+        Axis,
+        BackButton,
+        Badge,
+        Border,
+        BorderRadius,
+        BorderSide,
+        BoxConstraints,
+        BoxDecoration,
+        BoxFit,
+        BoxShape,
+        Brightness,
+        BuildContext,
+        Builder,
+        Card,
+        Center,
+        Checkbox,
+        CheckboxListTile,
+        Chip,
+        ChoiceChip,
+        CircleAvatar,
+        CircularProgressIndicator,
+        Clip,
+        ClipRRect,
+        CloseButton,
+        Color,
+        ColorScheme,
+        Colors,
+        Column,
+        ConstrainedBox,
+        Container,
+        CrossAxisAlignment,
+        Curve,
+        Curves,
+        CustomScrollView,
+        DecoratedBox,
+        DefaultTabController,
+        Dialog,
+        Divider,
+        Drawer,
+        DropdownButton,
+        DropdownMenu,
+        DropdownMenuItem,
+        EdgeInsets,
+        EdgeInsetsGeometry,
+        ElevatedButton,
+        Expanded,
+        FilledButton,
+        FilterChip,
+        FittedBox,
+        Flex,
+        Flexible,
+        FloatingActionButton,
+        FocusNode,
+        FontStyle,
+        FontWeight,
+        Form,
+        FormField,
+        FutureBuilder,
+        GestureDetector,
+        GlobalKey,
+        GridView,
+        Hero,
+        Icon,
+        IconButton,
+        IconData,
+        Icons,
+        Image,
+        InkWell,
+        InputBorder,
+        InputChip,
+        InputDecoration,
+        Key,
+        LayoutBuilder,
+        LinearProgressIndicator,
+        ListTile,
+        ListView,
+        MainAxisAlignment,
+        MainAxisSize,
+        Material,
+        MaterialApp,
+        MaterialPageRoute,
+        MediaQuery,
+        NavigationBar,
+        NavigationDestination,
+        NavigationRail,
+        Navigator,
+        Offset,
+        Opacity,
+        OutlinedButton,
+        OutlineInputBorder,
+        Padding,
+        PageController,
+        PageView,
+        Placeholder,
+        PopScope,
+        PopupMenuButton,
+        PopupMenuItem,
+        Positioned,
+        Radio,
+        RadioListTile,
+        Radius,
+        RefreshIndicator,
+        RichText,
+        Row,
+        SafeArea,
+        Scaffold,
+        ScaffoldMessenger,
+        ScrollController,
+        Scrollbar,
+        SegmentedButton,
+        SelectableText,
+        showDatePicker,
+        showDialog,
+        showModalBottomSheet,
+        showTimePicker,
+        SimpleDialog,
+        SimpleDialogOption,
+        SingleChildScrollView,
+        Size,
+        SizedBox,
+        Slider,
+        SliverAppBar,
+        SnackBar,
+        SnackBarAction,
+        Spacer,
+        Stack,
+        State,
+        StatefulWidget,
+        StatelessWidget,
+        StreamBuilder,
+        Switch,
+        SwitchListTile,
+        Tab,
+        TabBar,
+        TabBarView,
+        Text,
+        TextAlign,
+        TextBaseline,
+        TextButton,
+        TextCapitalization,
+        TextEditingController,
+        TextField,
+        TextFormField,
+        TextInputAction,
+        TextInputType,
+        TextOverflow,
+        TextScaler,
+        TextStyle,
+        TextTheme,
+        Theme,
+        ThemeData,
+        ThemeMode,
+        Tooltip,
+        UnderlineInputBorder,
+        ValueChanged,
+        ValueListenableBuilder,
+        VerticalDivider,
+        VoidCallback,
+        Widget,
+        Wrap;
+
+/// The violet seed every Lisa theme derives from (ADR-0014).
+const Color lisaSeedColor = Color(0xFF6D45C9);
+
+/// Builds the Lisa [ThemeData] for [brightness]: Material 3, the violet
+/// seed color scheme, Rubik (OS-installed, platform sans fallback), and
+/// [tokens] mapped into component shapes (card/dialog/input radius).
+ThemeData lisaTheme(
+  Brightness brightness, {
+  LisaTokens tokens = LisaTokens.fallback,
+}) {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: lisaSeedColor,
+    brightness: brightness,
+  );
+  final radius = BorderRadius.circular(tokens.radius);
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    fontFamily: 'Rubik',
+    cardTheme: CardThemeData(
+      shape: RoundedRectangleBorder(borderRadius: radius),
+    ),
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: radius),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      border: OutlineInputBorder(borderRadius: radius),
+    ),
+  );
+}
 
 /// Design tokens. `fallback` mirrors docs/notes/design-direction.md until
 /// the system theme file lands; consumers must read tokens, never
@@ -64,6 +288,97 @@ class LisaTheme extends InheritedWidget {
 
   @override
   bool updateShouldNotify(LisaTheme oldWidget) => tokens != oldWidget.tokens;
+}
+
+/// The root widget every Lisa app starts with: a [MaterialApp] pre-wired
+/// to Lisa theming — [lisaTheme] light + dark, following the OS mode
+/// unless [themeMode] says otherwise.
+class LisaApp extends StatelessWidget {
+  const LisaApp({
+    super.key,
+    required this.home,
+    this.title = '',
+    this.themeMode = ThemeMode.system,
+    this.theme,
+    this.darkTheme,
+  });
+
+  /// The app's home screen (usually a [LisaScaffold]).
+  final Widget home;
+
+  /// Passed through to [MaterialApp.title].
+  final String title;
+
+  /// Light/dark selection; defaults to following the OS.
+  final ThemeMode themeMode;
+
+  /// Overrides the [lisaTheme] light theme when set.
+  final ThemeData? theme;
+
+  /// Overrides the [lisaTheme] dark theme when set.
+  final ThemeData? darkTheme;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: title,
+    theme: theme ?? lisaTheme(Brightness.light),
+    darkTheme: darkTheme ?? lisaTheme(Brightness.dark),
+    themeMode: themeMode,
+    home: home,
+  );
+}
+
+/// A [Scaffold] with Lisa defaults: an [AppBar] when [title] is set, and
+/// the [body] inset by [SafeArea].
+class LisaScaffold extends StatelessWidget {
+  const LisaScaffold({
+    super.key,
+    required this.body,
+    this.title,
+    this.actions = const [],
+    this.floatingActionButton,
+  });
+
+  final Widget body;
+
+  /// When set, renders an [AppBar] with this title and [actions].
+  final String? title;
+
+  /// Trailing [AppBar] actions (ignored when [title] is null).
+  final List<Widget> actions;
+
+  final Widget? floatingActionButton;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: title == null
+        ? null
+        : AppBar(title: Text(title!), actions: actions),
+    body: SafeArea(child: body),
+    floatingActionButton: floatingActionButton,
+  );
+}
+
+/// A [Card] padded by the Lisa spacing token; the corner radius comes from
+/// [lisaTheme]'s card shape (the radius token).
+class LisaCard extends StatelessWidget {
+  const LisaCard({super.key, required this.child, this.padding});
+
+  final Widget child;
+
+  /// Inner padding; defaults to [LisaTokens.spacing] on all sides.
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = LisaTheme.of(context);
+    return Card(
+      child: Padding(
+        padding: padding ?? EdgeInsets.all(t.spacing),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// Streaming model output: accumulates tokens as they arrive, shows a

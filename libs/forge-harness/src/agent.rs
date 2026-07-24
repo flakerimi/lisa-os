@@ -157,6 +157,11 @@ rewrites.
 - `run_command` is allowlisted and runs in the project root; use it for toolchain \
 commands. Use `run_tests` to run the test suite.
 - Analyzer/verifier findings are fed back to you after each edit; fix them.
+- Flutter UI imports `package:lisa_ui/lisa_ui.dart` — the Lisa design system — never \
+`package:flutter/material.dart` directly. Root the app with `LisaApp`, build screens \
+with `LisaScaffold`, and use the Material widget vocabulary lisa_ui re-exports \
+(ElevatedButton, ListView, TextField, showDialog) plus `LisaCard`, `LisaStreamText`, \
+and `ConsentChip` where they fit.
 - When the task is complete, reply with a short summary and NO tool call.";
 
 /// The agent loop: converse with the backend one tool call at a time,
