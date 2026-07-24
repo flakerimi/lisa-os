@@ -5,6 +5,7 @@
 //! grammar module; sessions, tasks, and memory bindings land in M2.
 
 pub mod grammar;
+pub mod intent;
 pub mod tasks;
 
 /// SDK version, mirrored into the D-Bus and HTTP surfaces.
