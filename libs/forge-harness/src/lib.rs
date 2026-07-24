@@ -1,17 +1,29 @@
 //! forge-harness — the agentic app-building loop (`docs/PLAN.md`
-//! §5.12.1), walking skeleton.
+//! §5.12.1): a multi-turn, multi-tool coding agent against any
+//! OpenAI-compatible backend — lisa-inferenced's local coder model by
+//! default, a BYO agent CLI later, both through the same tool jail.
 //!
-//! plan → edit (jailed to the project dir) → `dart analyze` → iterate,
-//! against any OpenAI-compatible backend — lisa-inferenced's local coder
-//! model by default, a BYO agent CLI later, both through the same tool
-//! jail. Edits use *guided generation*: the backend is constrained to a
-//! `{path, content}` JSON schema, so the harness never parses free-form
-//! model output. Hot-reload preview + VLM self-inspection join the loop
-//! next (run-controller).
+//! The backend is offered a tool set (`read_file`, `list_dir`, `grep`,
+//! `write_file`, `edit_file`, `run_command`, `run_tests`), each declared
+//! with a JSON input schema so tool calls arrive grammar-valid and never
+//! as free-form model output. Every file operation is mediated by the
+//! [`jail::Jail`], so path traversal stays impossible no matter what the
+//! model asks for. Each turn the backend either calls one tool or signals
+//! done; a [`Verifier`] (`dart analyze` by default, any command, or none)
+//! decides whether "done" is believed. Hot-reload preview + VLM
+//! self-inspection join the loop next (run-controller).
 
+pub mod agent;
 pub mod jail;
+pub mod openai;
+pub mod tools;
 
-use jail::Jail;
+pub use agent::{
+    AgentAction, AgentConfig, AgentReport, Message, Role, ScriptedBackend, Verifier, forge_agent,
+};
+pub use openai::OpenAiBackend;
+pub use tools::{ToolCall, ToolOutcome, ToolSpec, execute_tool, tool_specs};
+
 use serde::Deserialize;
 use std::path::Path;
 use std::process::Command;
@@ -29,67 +41,23 @@ pub enum ForgeError {
     NoConvergence(usize),
 }
 
-/// One file edit, as the schema the backend is constrained to.
+/// One whole-file edit — the argument shape of the `write_file` tool.
 #[derive(Debug, Deserialize)]
 pub struct Edit {
     pub path: String,
     pub content: String,
 }
 
-/// A completion backend. The production impl speaks OpenAI-compat with
-/// guided generation; tests script it.
+/// A completion backend. The production impl speaks OpenAI-compat tool
+/// calling; tests script it. Each call sees the full conversation and the
+/// tool declarations, and answers with either one tool call or the done
+/// signal.
 pub trait Backend {
-    fn edit_for(&mut self, task: &str, context: &str) -> Result<Edit, ForgeError>;
-}
-
-/// OpenAI-compat backend (lisa-inferenced or any compatible endpoint).
-pub struct OpenAiBackend {
-    pub url: String,
-    pub model: Option<String>,
-}
-
-const EDIT_SCHEMA: &str = r#"{
-  "type": "object",
-  "properties": {
-    "path": { "type": "string", "maxLength": 200 },
-    "content": { "type": "string" }
-  },
-  "required": ["path", "content"]
-}"#;
-
-impl Backend for OpenAiBackend {
-    fn edit_for(&mut self, task: &str, context: &str) -> Result<Edit, ForgeError> {
-        let schema: serde_json::Value =
-            serde_json::from_str(EDIT_SCHEMA).expect("static schema parses");
-        let body = serde_json::json!({
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content":
-                    "You are the Lisa Forge, writing a Dart/Flutter app. Reply with a \
-                     JSON object {path, content}. `path` MUST be an actual \
-                     project-relative path such as `bin/main.dart` or \
-                     `lib/main.dart` — never an absolute path, never a placeholder \
-                     like /path/to/file. `content` is the COMPLETE new file content \
-                     (not a diff, not an ellipsis). Fix any analyzer findings you are \
-                     given."},
-                {"role": "user", "content": format!("Task: {task}\n\n{context}")}
-            ],
-            "response_format": {"type": "json_schema",
-                                "json_schema": {"name": "edit", "schema": schema}},
-        });
-        let endpoint = format!("{}/v1/chat/completions", self.url.trim_end_matches('/'));
-        let mut response = ureq::post(&endpoint)
-            .send_json(&body)
-            .map_err(|e| ForgeError::Backend(e.to_string()))?;
-        let json: serde_json::Value = response
-            .body_mut()
-            .read_json()
-            .map_err(|e| ForgeError::Backend(e.to_string()))?;
-        let content = json["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| ForgeError::Backend(format!("no content in {json}")))?;
-        serde_json::from_str(content).map_err(|e| ForgeError::Backend(format!("bad edit: {e}")))
-    }
+    fn next_action(
+        &mut self,
+        messages: &[Message],
+        tools: &[ToolSpec],
+    ) -> Result<AgentAction, ForgeError>;
 }
 
 #[derive(Debug)]
@@ -115,71 +83,37 @@ pub fn analyze(project: &Path) -> Result<Option<String>, ForgeError> {
     )))
 }
 
-/// The loop: ask the backend for an edit, apply it inside the jail, run
-/// the analyzer; feed findings back until clean or out of iterations.
+/// The original single-task entry point, kept signature-compatible for
+/// callers (cli/lisa). It now runs the full multi-tool agent loop with
+/// the `dart analyze` verifier: the backend may read, grep, edit, and run
+/// commands, not just emit whole-file edits. `max_iterations` still
+/// budgets the work — as a turn cap of 8 turns per iteration, since
+/// read/inspect turns don't write files — and `ForgeReport.iterations`
+/// reports the turns actually used.
 pub fn forge(
     task: &str,
     project: &Path,
     backend: &mut dyn Backend,
     max_iterations: usize,
 ) -> Result<ForgeReport, ForgeError> {
-    let jail = Jail::new(project)?;
-    let mut context = String::from("Fresh iteration.");
-    for iteration in 1..=max_iterations {
-        let edit = backend.edit_for(task, &context)?;
-        // A jail rejection (absolute path, traversal, or a placeholder
-        // like /path/to/file) is a fixable model mistake, not a fatal
-        // error: tell the model and let it retry. The jail still refused
-        // to write outside the project — the security boundary holds.
-        // Real I/O errors still propagate.
-        match jail.write(&edit.path, &edit.content) {
-            Ok(()) => {}
-            Err(jail::JailError::Escape(bad)) => {
-                context = format!(
-                    "The path `{bad}` was rejected: it must be a project-relative \
-                     path with no leading slash and no `..` — for example \
-                     `bin/main.dart` or `lib/src/foo.dart`. Reply again with a \
-                     valid project-relative path and the complete file content."
-                );
-                continue;
-            }
-            Err(e) => return Err(e.into()),
-        }
-        match analyze(project)? {
-            None => {
-                return Ok(ForgeReport {
-                    iterations: iteration,
-                    analyzer_output: String::new(),
-                });
-            }
-            Some(findings) => {
-                context = format!(
-                    "Your previous edit to `{}` produced analyzer findings:\n{}\n\
-                     Reply with a corrected complete file.",
-                    edit.path, findings
-                );
-            }
-        }
+    let config = AgentConfig {
+        max_turns: max_iterations.saturating_mul(8).max(8),
+        verifier: Verifier::Dart,
+    };
+    match forge_agent(task, project, backend, &config) {
+        Ok(report) => Ok(ForgeReport {
+            iterations: report.turns,
+            analyzer_output: report.verifier_output,
+        }),
+        Err(ForgeError::NoConvergence(_)) => Err(ForgeError::NoConvergence(max_iterations)),
+        Err(e) => Err(e),
     }
-    Err(ForgeError::NoConvergence(max_iterations))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct Scripted {
-        edits: Vec<Edit>,
-    }
-
-    impl Backend for Scripted {
-        fn edit_for(&mut self, _task: &str, _context: &str) -> Result<Edit, ForgeError> {
-            if self.edits.is_empty() {
-                return Err(ForgeError::Backend("script exhausted".into()));
-            }
-            Ok(self.edits.remove(0))
-        }
-    }
+    use serde_json::json;
 
     fn dart_available() -> bool {
         Command::new("dart").arg("--version").output().is_ok()
@@ -194,6 +128,14 @@ mod tests {
         std::fs::create_dir_all(dir.join("bin")).unwrap();
     }
 
+    fn write_main(content: &str) -> AgentAction {
+        AgentAction::Call(ToolCall {
+            id: "c1".into(),
+            name: "write_file".into(),
+            args: json!({"path": "bin/main.dart", "content": content}),
+        })
+    }
+
     #[test]
     fn loop_converges_when_the_fix_lands() {
         if !dart_available() {
@@ -202,18 +144,10 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         dart_project(dir.path());
-        let mut backend = Scripted {
-            edits: vec![
-                Edit {
-                    path: "bin/main.dart".into(),
-                    content: "void main() { undefined_symbol(); }\n".into(),
-                },
-                Edit {
-                    path: "bin/main.dart".into(),
-                    content: "void main() { print('forged'); }\n".into(),
-                },
-            ],
-        };
+        let mut backend = ScriptedBackend::new(vec![
+            write_main("void main() { undefined_symbol(); }\n"),
+            write_main("void main() { print('forged'); }\n"),
+        ]);
         let report = forge("print forged", dir.path(), &mut backend, 3).unwrap();
         assert_eq!(report.iterations, 2, "broken first, fixed second");
     }
@@ -226,13 +160,31 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         dart_project(dir.path());
-        let mut backend = Scripted {
-            edits: vec![Edit {
-                path: "bin/main.dart".into(),
-                content: "void main() { broken(; }\n".into(),
-            }],
-        };
+        let mut backend = ScriptedBackend::repeating(vec![write_main("void main() { broken(; }\n")]);
         let err = forge("task", dir.path(), &mut backend, 1);
         assert!(matches!(err, Err(ForgeError::NoConvergence(1))));
+    }
+
+    #[test]
+    fn forge_reports_the_analyzer_findings_on_failure() {
+        if !dart_available() {
+            eprintln!("skipping: dart not on PATH");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        dart_project(dir.path());
+        let mut backend = ScriptedBackend::new(vec![
+            write_main("void main() { undefined_symbol(); }\n"),
+            AgentAction::Done("I am done".into()),
+        ]);
+        // The done signal is rejected by the analyzer and the script runs
+        // out — a Backend error, proving findings were not waved through.
+        let err = forge("task", dir.path(), &mut backend, 3);
+        assert!(matches!(err, Err(ForgeError::Backend(_))));
+        let findings_shown = backend
+            .last_history
+            .iter()
+            .any(|m| m.content.contains("undefined_symbol"));
+        assert!(findings_shown, "analyzer findings must reach the model");
     }
 }
