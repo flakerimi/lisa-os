@@ -1210,6 +1210,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "lisa-ledger",
+ "mcp-bus",
  "rusqlite",
  "serde",
  "serde_json",

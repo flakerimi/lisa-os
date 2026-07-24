@@ -130,6 +130,18 @@ impl Dispatcher for NullDispatcher {
     }
 }
 
+// Wire the real per-app MCP transport (`libs/mcp-bus`) into the bus.
+// `McpDispatcher` speaks its own crate-local `mcp_bus::Dispatcher`; this
+// bridge lets it stand in for `NullDispatcher` wherever the bus wants an
+// `Arc<dyn Dispatcher>`. Legal here (not in the binary) because `Dispatcher`
+// is defined in this crate — the orphan rule allows a local trait on a
+// foreign type. See ADR-0013.
+impl Dispatcher for mcp_bus::McpDispatcher {
+    fn dispatch(&self, app_id: &str, tool: &str, args: &Value) -> Result<Value, String> {
+        mcp_bus::Dispatcher::dispatch(self, app_id, tool, args)
+    }
+}
+
 /// Test-support dispatcher: records every dispatched call and returns a
 /// canned result. Used by this crate's tests and tests/injection-suite.
 #[derive(Default)]

@@ -5,7 +5,7 @@
 //! No network access — ever (CLAUDE.md rule 5); the hardened systemd
 //! unit enforces it on the image, and no dependency here may add it.
 
-use lisa_agentd::bus::{AgentBus, NullDispatcher};
+use lisa_agentd::bus::AgentBus;
 use lisa_agentd::dbus;
 use lisa_agentd::journal::UndoJournal;
 use lisa_agentd::registry::Registry;
@@ -60,7 +60,10 @@ async fn main() -> anyhow::Result<()> {
         registry,
         ledger,
         journal,
-        Arc::new(NullDispatcher), // MCP wire transport: next M5 slice (ADR-0009).
+        // Per-app unix-socket MCP transport (libs/mcp-bus, ADR-0013): tool
+        // calls now execute against the app's MCP server; a missing socket
+        // fails cleanly and is ledgered, exactly as NullDispatcher did.
+        Arc::new(mcp_bus::McpDispatcher::default()),
     ));
 
     let _connection = dbus::serve(bus).await?;
