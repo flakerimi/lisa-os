@@ -56,14 +56,28 @@ async fn main() -> anyhow::Result<()> {
     )?);
     let journal = UndoJournal::open(UndoJournal::default_path())?;
 
+    // Per-app unix-socket MCP transport (libs/mcp-bus, ADR-0013): tool
+    // calls execute against the app's MCP server; a missing socket fails
+    // cleanly and is ledgered, exactly as NullDispatcher did. Socket dir:
+    // $LISA_MCP_DIR wins (the user units set %t/lisa/mcp), else the
+    // session-private $XDG_RUNTIME_DIR/lisa/mcp, else the system default —
+    // apps (e.g. lisa-notes) resolve their bind path the same way, so the
+    // two sides always agree.
+    let mcp_dir = std::env::var_os("LISA_MCP_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("XDG_RUNTIME_DIR")
+                .map(|r| std::path::PathBuf::from(r).join("lisa/mcp"))
+        });
+    let dispatcher = match mcp_dir {
+        Some(dir) => mcp_bus::McpDispatcher::new(dir),
+        None => mcp_bus::McpDispatcher::default(),
+    };
     let bus = Arc::new(AgentBus::new(
         registry,
         ledger,
         journal,
-        // Per-app unix-socket MCP transport (libs/mcp-bus, ADR-0013): tool
-        // calls now execute against the app's MCP server; a missing socket
-        // fails cleanly and is ledgered, exactly as NullDispatcher did.
-        Arc::new(mcp_bus::McpDispatcher::default()),
+        Arc::new(dispatcher),
     ));
 
     let _connection = dbus::serve(bus).await?;

@@ -76,8 +76,12 @@ fn socket_path() -> Result<PathBuf, String> {
 }
 
 fn default_socket() -> PathBuf {
+    // Same resolution order as agentd's dispatcher (LISA_MCP_DIR →
+    // $XDG_RUNTIME_DIR/lisa/mcp → system default), so the server binds
+    // exactly where the bus will look.
     let dir = std::env::var_os("LISA_MCP_DIR")
         .map(PathBuf::from)
+        .or_else(|| std::env::var_os("XDG_RUNTIME_DIR").map(|r| PathBuf::from(r).join("lisa/mcp")))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET_DIR));
     dir.join(format!("{APP_ID}.sock"))
 }

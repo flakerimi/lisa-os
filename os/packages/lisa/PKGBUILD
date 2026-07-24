@@ -5,7 +5,7 @@
 # the hosted repo (M1) ships signed packages instead (PLAN §5.10).
 
 pkgbase=lisa
-pkgname=(lisa-inferenced lisa-modeld lisa-cli lisa-shell lisa-portal)
+pkgname=(lisa-inferenced lisa-modeld lisa-cli lisa-shell lisa-portal lisa-agentd lisa-notes)
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Lisa OS AI layer: local inference as a system service"
@@ -75,6 +75,36 @@ package_lisa-portal() {
         "$pkgdir/usr/lib/systemd/user/xdg-desktop-portal-lisa.service"
     install -Dm644 os/packages/lisa/org.lisa.Portal.service \
         "$pkgdir/usr/share/dbus-1/services/org.lisa.Portal.service"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_lisa-agentd() {
+    pkgdesc="Lisa OS Agent Bus: MCP-native intents, tiers, undo (PLAN §5.4, ADR-0013)"
+    depends=(gcc-libs)
+    cd "$pkgbase-$pkgver"
+    install -Dm755 target/release/lisa-agentd "$pkgdir/usr/bin/lisa-agentd"
+    # Session-bus daemon, one per user, on from first login.
+    install -Dm644 os/packages/lisa/lisa-agentd.service \
+        "$pkgdir/usr/lib/systemd/user/lisa-agentd.service"
+    install -d "$pkgdir/usr/lib/systemd/user/default.target.wants"
+    ln -s ../lisa-agentd.service \
+        "$pkgdir/usr/lib/systemd/user/default.target.wants/lisa-agentd.service"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_lisa-notes() {
+    pkgdesc="Lisa Notes: first-party MCP tool provider on the Agent Bus (ADR-0013)"
+    depends=(gcc-libs lisa-agentd)
+    cd "$pkgbase-$pkgver"
+    install -Dm755 target/release/lisa-notes "$pkgdir/usr/bin/lisa-notes"
+    # The app-intent manifest: what the bus discovers and enforces.
+    install -Dm644 apps/notes/org.lisa.notes.json \
+        "$pkgdir/usr/share/lisa/manifests/org.lisa.notes.json"
+    install -Dm644 os/packages/lisa/lisa-notes.service \
+        "$pkgdir/usr/lib/systemd/user/lisa-notes.service"
+    install -d "$pkgdir/usr/lib/systemd/user/default.target.wants"
+    ln -s ../lisa-notes.service \
+        "$pkgdir/usr/lib/systemd/user/default.target.wants/lisa-notes.service"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
 

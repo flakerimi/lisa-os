@@ -1,0 +1,21 @@
+# Notes MCP server (apps/notes, ADR-0013) — the first first-party tool
+# provider on the Agent Bus. Binds its socket in the same session-private
+# dir the bus dispatches to (%t/lisa/mcp via LISA_MCP_DIR). Local-only:
+# unix socket + SQLite under $XDG_DATA_HOME; no network.
+[Unit]
+Description=Lisa Notes (MCP server org.lisa.notes)
+After=dbus.service
+
+[Service]
+Type=exec
+ExecStartPre=/usr/bin/mkdir -p %t/lisa/mcp
+Environment=LISA_MCP_DIR=%t/lisa/mcp
+ExecStart=/usr/bin/lisa-notes
+Restart=on-failure
+RestartSec=2
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

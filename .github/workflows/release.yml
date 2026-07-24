@@ -88,6 +88,8 @@ jobs:
                    lisa-modeld
                    lisa-cli
                    lisa-shell
+                   lisa-agentd
+                   lisa-notes
                    llama.cpp
                    zen-browser
           ExtraTrees=/build/extra
